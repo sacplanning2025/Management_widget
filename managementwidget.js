@@ -894,9 +894,9 @@
         { key: "COSTCENTER", label: "COSTCENTER", type: "select", width: "180px" },
         { key: "PROFITCENTER", label: "PROFITCENTER", type: "select", width: "180px" },
         { key: "SEGMENT", label: "SEGMENT", type: "select", width: "140px" },
-        { key: "ID", label: "ID", type: "readonly", width: "280px" },
-        { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "320px" },
-        { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "240px" },
+        { key: "ID", label: "ID", type: "readonly", width: "210px" },
+        { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "250px" },
+        { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "230px" },
         { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
       ];
 
