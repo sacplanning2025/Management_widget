@@ -117,10 +117,10 @@
         COSTCENTER: "",
         PROFITCENTER: "",
         SEGMENT: "",
-        Hierarchy: "",
         ID: "",
+        MANAGEMENT_SUB_MAPPING: "",
         MANAGEMENT_MAPPING: "",
-        MANAGEMENT_SUB_MAPPING: ""
+        Hierarchy: ""
       };
     }
 
@@ -145,10 +145,10 @@
       row.COSTCENTER = this._safeString(row.COSTCENTER);
       row.PROFITCENTER = this._safeString(row.PROFITCENTER);
       row.SEGMENT = this._safeString(row.SEGMENT);
-      row.Hierarchy = this._safeString(row.Hierarchy);
       row.ID = this._safeString(row.ID);
-      row.MANAGEMENT_MAPPING = this._safeString(row.MANAGEMENT_MAPPING);
       row.MANAGEMENT_SUB_MAPPING = this._safeString(row.MANAGEMENT_SUB_MAPPING);
+      row.MANAGEMENT_MAPPING = this._safeString(row.MANAGEMENT_MAPPING);
+      row.Hierarchy = this._safeString(row.Hierarchy);
 
       this._updateRowId(row);
     }
@@ -317,10 +317,10 @@
       html += '<th style="width:180px">COSTCENTER</th>';
       html += '<th style="width:180px">PROFITCENTER</th>';
       html += '<th style="width:120px">SEGMENT</th>';
-      html += '<th style="width:180px">Hierarchy</th>';
       html += '<th style="width:280px">ID</th>';
-      html += '<th style="width:220px">MANAGEMENT MAPPING</th>';
       html += '<th style="width:320px">MANAGEMENT SUB-MAPPING</th>';
+      html += '<th style="width:220px">MANAGEMENT MAPPING</th>';
+      html += '<th style="width:180px">Hierarchy</th>';
       html += '</tr></thead><tbody>';
 
       for (var i = 0; i < this._rows.length; i++) {
@@ -340,10 +340,10 @@
         html += '<td>' + this._renderSelectCell(i, "COSTCENTER", row.COSTCENTER, this._costCenterOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "PROFITCENTER", row.PROFITCENTER, this._profitCenterOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "SEGMENT", row.SEGMENT, this._segmentOptions, rowErrors) + '</td>';
-        html += '<td>' + this._renderSelectCell(i, "Hierarchy", row.Hierarchy, this._hierarchyOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderReadOnlyCell("ID", row.ID, rowErrors) + '</td>';
-        html += '<td>' + this._renderSelectCell(i, "MANAGEMENT_MAPPING", row.MANAGEMENT_MAPPING, this._managementMappingOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "MANAGEMENT_SUB_MAPPING", row.MANAGEMENT_SUB_MAPPING, this._managementSubMappingOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "MANAGEMENT_MAPPING", row.MANAGEMENT_MAPPING, this._managementMappingOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "Hierarchy", row.Hierarchy, this._hierarchyOptions, rowErrors) + '</td>';
         html += '</tr>';
       }
 
@@ -375,8 +375,10 @@
 
       for (var i = 0; i < options.length; i++) {
         var opt = options[i];
-        var selected = String(opt.key) === String(value) ? 'selected' : '';
-        html += '<option value="' + this._escape(opt.key) + '" ' + selected + '>' + this._escape(opt.text) + '</option>';
+        var optKey = opt && opt.key !== undefined ? opt.key : opt;
+        var optText = opt && opt.text !== undefined ? opt.text : opt;
+        var selected = String(optKey) === String(value) ? 'selected' : '';
+        html += '<option value="' + this._escape(optKey) + '" ' + selected + '>' + this._escape(optText) + '</option>';
       }
 
       html += '</select>';
@@ -548,10 +550,10 @@
             COSTCENTER: this._rows[i].COSTCENTER || "",
             PROFITCENTER: this._rows[i].PROFITCENTER || "",
             SEGMENT: this._rows[i].SEGMENT || "",
-            Hierarchy: this._rows[i].Hierarchy || "",
-            ID: this._rows[i].ID || "",
+            ID: "",
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING || "",
             MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING || "",
-            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING || ""
+            Hierarchy: this._rows[i].Hierarchy || ""
           });
         }
       }
@@ -690,10 +692,10 @@
             COSTCENTER: this._rows[i].COSTCENTER,
             PROFITCENTER: this._rows[i].PROFITCENTER,
             SEGMENT: this._rows[i].SEGMENT,
-            Hierarchy: this._rows[i].Hierarchy,
             ID: this._rows[i].ID,
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
             MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
-            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING
+            Hierarchy: this._rows[i].Hierarchy
           });
         }
       }
