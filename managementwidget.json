@@ -1,16 +1,16 @@
 {
-  "id": "com.company.projectentrywidget",
+  "id": "com.company.managementwidget",
   "version": "1.9.2",
   "name": "Project Entry Widget",
   "description": "Project entry table widget for SAC",
-  "vendor": "Arnav Choudhary",
+  "vendor": "NTT",
   "newInstancePrefix": "ProjectEntryWidget",
   "icon": "sap-icon://table-view",
   "webcomponents": [
     {
       "kind": "main",
-      "tag": "com-company-projectentrywidget",
-      "url": "https://sacplanning2025.github.io/hr_widget/projectEntryWidget.js",
+      "tag": "com-company-managementwidget",
+      "url": "https://sacplanning2025.github.io/Management_widget/managementwidget.js",
       "integrity": "",
       "ignoreIntegrity": true
     }
