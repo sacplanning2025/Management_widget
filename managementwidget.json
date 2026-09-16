@@ -1,8 +1,8 @@
 {
   "id": "com.company.managementwidget",
-  "version": "1.9.2",
+  "version": "2.0.0",
   "name": "Project Entry Widget",
-  "description": "Project entry table widget for SAC",
+  "description": "Management mapping table widget for SAC",
   "vendor": "NTT",
   "newInstancePrefix": "ProjectEntryWidget",
   "icon": "sap-icon://table-view",
@@ -24,8 +24,14 @@
     "rowCount": { "type": "integer", "default": 0 },
     "selectedRowCount": { "type": "integer", "default": 0 },
     "widgetStatus": { "type": "string", "default": "READY" },
-    "companyCodeOptions": { "type": "string", "default": "[]" },
-    "customerOptions": { "type": "string", "default": "[]" }
+
+    "glAccountOptions": { "type": "string", "default": "[]" },
+    "costCenterOptions": { "type": "string", "default": "[]" },
+    "profitCenterOptions": { "type": "string", "default": "[]" },
+    "segmentOptions": { "type": "string", "default": "[]" },
+    "hierarchyOptions": { "type": "string", "default": "[]" },
+    "managementMappingOptions": { "type": "string", "default": "[]" },
+    "managementSubMappingOptions": { "type": "string", "default": "[]" }
   },
   "methods": {
     "getRows": { "returnType": "string" },
@@ -58,16 +64,43 @@
     "save": {},
     "getValidationErrors": { "returnType": "string" },
     "getValidationResult": { "returnType": "string" },
-    "setCompanyCodeOptions": {
+
+    "setGlAccountOptions": {
       "parameters": [
         { "name": "json", "type": "string" }
       ]
     },
-    "setCustomerOptions": {
+    "setCostCenterOptions": {
       "parameters": [
         { "name": "json", "type": "string" }
       ]
     },
+    "setProfitCenterOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setSegmentOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setHierarchyOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setManagementMappingOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setManagementSubMappingOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+
     "getLastEvent": { "returnType": "string" }
   },
   "events": {
