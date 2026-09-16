@@ -1,0 +1,79 @@
+{
+  "id": "com.company.projectentrywidget",
+  "version": "1.9.2",
+  "name": "Project Entry Widget",
+  "description": "Project entry table widget for SAC",
+  "vendor": "Arnav Choudhary",
+  "newInstancePrefix": "ProjectEntryWidget",
+  "icon": "sap-icon://table-view",
+  "webcomponents": [
+    {
+      "kind": "main",
+      "tag": "com-company-projectentrywidget",
+      "url": "https://sacplanning2025.github.io/hr_widget/projectEntryWidget.js",
+      "integrity": "",
+      "ignoreIntegrity": true
+    }
+  ],
+  "properties": {
+    "rows": { "type": "string", "default": "[]" },
+    "lastEvent": { "type": "string", "default": "" },
+    "validationResult": { "type": "string", "default": "true" },
+    "validationErrors": { "type": "string", "default": "[]" },
+    "savePayload": { "type": "string", "default": "[]" },
+    "rowCount": { "type": "integer", "default": 0 },
+    "selectedRowCount": { "type": "integer", "default": 0 },
+    "widgetStatus": { "type": "string", "default": "READY" },
+    "companyCodeOptions": { "type": "string", "default": "[]" },
+    "customerOptions": { "type": "string", "default": "[]" }
+  },
+  "methods": {
+    "getRows": { "returnType": "string" },
+    "setRows": {
+      "parameters": [
+        { "name": "rowsJson", "type": "string" }
+      ]
+    },
+    "getRowCount": { "returnType": "integer" },
+    "getSelectedRowCount": { "returnType": "integer" },
+    "getRowValue": {
+      "parameters": [
+        { "name": "rowIndex", "type": "integer" },
+        { "name": "fieldName", "type": "string" }
+      ],
+      "returnType": "string"
+    },
+    "getSelectedRowValue": {
+      "parameters": [
+        { "name": "selectedIndex", "type": "integer" },
+        { "name": "fieldName", "type": "string" }
+      ],
+      "returnType": "string"
+    },
+    "addRow": {},
+    "copySelectedRows": {},
+    "deleteSelectedRows": {},
+    "clear": {},
+    "validate": { "returnType": "string" },
+    "save": {},
+    "getValidationErrors": { "returnType": "string" },
+    "getValidationResult": { "returnType": "string" },
+    "setCompanyCodeOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setCustomerOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "getLastEvent": { "returnType": "string" }
+  },
+  "events": {
+    "onFieldChange": {},
+    "onDataChange": {},
+    "onValidate": {},
+    "onReady": {}
+  }
+}
