@@ -119,8 +119,8 @@
         SEGMENT: "",
         ID: "",
         MANAGEMENT_SUB_MAPPING: "",
-         MANAGEMENT_MAPPING: "",
-        Hierarchy: ""        
+        MANAGEMENT_MAPPING: "",
+        Hierarchy: ""
       };
     }
 
@@ -149,6 +149,7 @@
       row.MANAGEMENT_SUB_MAPPING = this._safeString(row.MANAGEMENT_SUB_MAPPING);
       row.MANAGEMENT_MAPPING = this._safeString(row.MANAGEMENT_MAPPING);
       row.Hierarchy = this._safeString(row.Hierarchy);
+
       this._updateRowId(row);
     }
 
@@ -334,6 +335,7 @@
         }
 
         html += '<tr class="' + rowClass + '">';
+        html += '<td>' + this._renderCheckboxCell(i, row.selected) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "GLACCOUNT", row.GLACCOUNT, this._glAccountOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "COSTCENTER", row.COSTCENTER, this._costCenterOptions, rowErrors) + '</td>';
         html += '<td>' + this._renderSelectCell(i, "PROFITCENTER", row.PROFITCENTER, this._profitCenterOptions, rowErrors) + '</td>';
@@ -373,8 +375,10 @@
 
       for (var i = 0; i < options.length; i++) {
         var opt = options[i];
-        var selected = String(opt.key) === String(value) ? 'selected' : '';
-        html += '<option value="' + this._escape(opt.key) + '" ' + selected + '>' + this._escape(opt.text) + '</option>';
+        var optKey = opt && opt.key !== undefined ? opt.key : opt;
+        var optText = opt && opt.text !== undefined ? opt.text : opt;
+        var selected = String(optKey) === String(value) ? 'selected' : '';
+        html += '<option value="' + this._escape(optKey) + '" ' + selected + '>' + this._escape(optText) + '</option>';
       }
 
       html += '</select>';
@@ -546,10 +550,10 @@
             COSTCENTER: this._rows[i].COSTCENTER || "",
             PROFITCENTER: this._rows[i].PROFITCENTER || "",
             SEGMENT: this._rows[i].SEGMENT || "",
-            ID: this._rows[i].ID || "",
+            ID: "",
             MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING || "",
             MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING || "",
-            Hierarchy: this._rows[i].Hierarchy || ""           
+            Hierarchy: this._rows[i].Hierarchy || ""
           });
         }
       }
@@ -683,17 +687,16 @@
 
       for (var i = 0; i < this._rows.length; i++) {
         if (this._rows[i].selected === true) {
-         payload.push({
-          GLACCOUNT: this._rows[i].GLACCOUNT,
-          COSTCENTER: this._rows[i].COSTCENTER,
-          PROFITCENTER: this._rows[i].PROFITCENTER,
-          SEGMENT: this._rows[i].SEGMENT,
-          ID: this._rows[i].ID,
-          MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
-          MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
-          Hierarchy: this._rows[i].Hierarchy
-        });
-
+          payload.push({
+            GLACCOUNT: this._rows[i].GLACCOUNT,
+            COSTCENTER: this._rows[i].COSTCENTER,
+            PROFITCENTER: this._rows[i].PROFITCENTER,
+            SEGMENT: this._rows[i].SEGMENT,
+            ID: this._rows[i].ID,
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
+            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
+            Hierarchy: this._rows[i].Hierarchy
+          });
         }
       }
 
