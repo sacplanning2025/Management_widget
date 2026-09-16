@@ -11,10 +11,14 @@
       this._savePayload = [];
       this._widgetStatus = "READY";
       this._rowSequence = 1;
-      this._suspendAttributeSync = false;
 
-      this._companyCodeOptions = [];
-      this._customerOptions = [];
+      this._glAccountOptions = [];
+      this._costCenterOptions = [];
+      this._profitCenterOptions = [];
+      this._segmentOptions = [];
+      this._hierarchyOptions = [];
+      this._managementMappingOptions = [];
+      this._managementSubMappingOptions = [];
 
       this._render();
     }
@@ -40,13 +44,18 @@
         "rowCount",
         "selectedRowCount",
         "widgetStatus",
-        "companyCodeOptions",
-        "customerOptions"
+        "glAccountOptions",
+        "costCenterOptions",
+        "profitCenterOptions",
+        "segmentOptions",
+        "hierarchyOptions",
+        "managementMappingOptions",
+        "managementSubMappingOptions"
       ];
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-      if (oldValue === newValue || this._suspendAttributeSync) {
+      if (oldValue === newValue) {
         return;
       }
 
@@ -55,14 +64,44 @@
         return;
       }
 
-      if (name === "companyCodeOptions") {
-        this._companyCodeOptions = this._parseOptions(newValue);
+      if (name === "glAccountOptions") {
+        this._glAccountOptions = this._parseOptions(newValue);
         this._refreshTable();
         return;
       }
 
-      if (name === "customerOptions") {
-        this._customerOptions = this._parseOptions(newValue);
+      if (name === "costCenterOptions") {
+        this._costCenterOptions = this._parseOptions(newValue);
+        this._refreshTable();
+        return;
+      }
+
+      if (name === "profitCenterOptions") {
+        this._profitCenterOptions = this._parseOptions(newValue);
+        this._refreshTable();
+        return;
+      }
+
+      if (name === "segmentOptions") {
+        this._segmentOptions = this._parseOptions(newValue);
+        this._refreshTable();
+        return;
+      }
+
+      if (name === "hierarchyOptions") {
+        this._hierarchyOptions = this._parseOptions(newValue);
+        this._refreshTable();
+        return;
+      }
+
+      if (name === "managementMappingOptions") {
+        this._managementMappingOptions = this._parseOptions(newValue);
+        this._refreshTable();
+        return;
+      }
+
+      if (name === "managementSubMappingOptions") {
+        this._managementSubMappingOptions = this._parseOptions(newValue);
         this._refreshTable();
         return;
       }
@@ -74,13 +113,14 @@
         selected: false,
         isModified: false,
         rowStatus: "NEW",
-        CompanyCode: "",
-        ProjectID: "",
-        Description: "",
-        CustomerID: "",
-        ProjectStartDate: "",
-        ProjectEndDate: "",
-        ChanceOfWinning: ""
+        GLACCOUNT: "",
+        COSTCENTER: "",
+        PROFITCENTER: "",
+        SEGMENT: "",
+        Hierarchy: "",
+        ID: "",
+        MANAGEMENT_MAPPING: "",
+        MANAGEMENT_SUB_MAPPING: ""
       };
     }
 
@@ -101,13 +141,16 @@
         row.rowStatus = "LOADED";
       }
 
-      row.CompanyCode = this._safeString(row.CompanyCode);
-      row.ProjectID = this._safeString(row.ProjectID);
-      row.Description = this._safeString(row.Description);
-      row.CustomerID = this._safeString(row.CustomerID);
-      row.ProjectStartDate = this._safeString(row.ProjectStartDate);
-      row.ProjectEndDate = this._safeString(row.ProjectEndDate);
-      row.ChanceOfWinning = this._safeString(row.ChanceOfWinning);
+      row.GLACCOUNT = this._safeString(row.GLACCOUNT);
+      row.COSTCENTER = this._safeString(row.COSTCENTER);
+      row.PROFITCENTER = this._safeString(row.PROFITCENTER);
+      row.SEGMENT = this._safeString(row.SEGMENT);
+      row.Hierarchy = this._safeString(row.Hierarchy);
+      row.ID = this._safeString(row.ID);
+      row.MANAGEMENT_MAPPING = this._safeString(row.MANAGEMENT_MAPPING);
+      row.MANAGEMENT_SUB_MAPPING = this._safeString(row.MANAGEMENT_SUB_MAPPING);
+
+      this._updateRowId(row);
     }
 
     _normalizeAllRows() {
@@ -143,6 +186,17 @@
       }
     }
 
+    _updateRowId(row) {
+      var parts = [];
+
+      if (row.GLACCOUNT) parts.push(row.GLACCOUNT);
+      if (row.COSTCENTER) parts.push(row.COSTCENTER);
+      if (row.PROFITCENTER) parts.push(row.PROFITCENTER);
+      if (row.SEGMENT) parts.push(row.SEGMENT);
+
+      row.ID = parts.join("-");
+    }
+
     _render() {
       this._shadowRoot.innerHTML = `
         <style>
@@ -172,6 +226,11 @@
             background:#fff;
             color:#223548;
             outline:none;
+          }
+          .readonly {
+            background:#f4f6f8;
+            color:#5f6b7a;
+            cursor:not-allowed;
           }
           .rowErr { margin-top:4px; font-size:11px; color:#c53030; white-space:normal; max-width:220px; line-height:1.3; }
           .summary { padding:10px 12px; border-top:1px solid #e5edf7; display:flex; gap:18px; font-size:12px; background:#fafcff; flex-wrap:wrap; }
@@ -254,13 +313,14 @@
       html += '<table>';
       html += '<thead><tr>';
       html += '<th style="width:70px"><div class="select-all-wrap"><span>Sel</span><input class="select-all-checkbox" type="checkbox" id="selectAll" ' + (allSelected ? 'checked' : '') + ' /></div></th>';
-      html += '<th style="width:180px">Company Code</th>';
-      html += '<th style="width:180px">Project ID</th>';
-      html += '<th style="width:260px">Description</th>';
-      html += '<th style="width:180px">Customer ID</th>';
-      html += '<th style="width:170px">Project Start Date</th>';
-      html += '<th style="width:170px">Project End Date</th>';
-      html += '<th style="width:180px">% Chance of Winning</th>';
+      html += '<th style="width:180px">GLACCOUNT</th>';
+      html += '<th style="width:180px">COSTCENTER</th>';
+      html += '<th style="width:180px">PROFITCENTER</th>';
+      html += '<th style="width:120px">SEGMENT</th>';
+      html += '<th style="width:180px">Hierarchy</th>';
+      html += '<th style="width:280px">ID</th>';
+      html += '<th style="width:220px">MANAGEMENT MAPPING</th>';
+      html += '<th style="width:320px">MANAGEMENT SUB-MAPPING</th>';
       html += '</tr></thead><tbody>';
 
       for (var i = 0; i < this._rows.length; i++) {
@@ -276,13 +336,14 @@
 
         html += '<tr class="' + rowClass + '">';
         html += '<td>' + this._renderCheckboxCell(i, row.selected) + '</td>';
-        html += '<td>' + this._renderSelectCell(i, "CompanyCode", row.CompanyCode, this._companyCodeOptions, rowErrors) + '</td>';
-        html += '<td>' + this._renderInputCell(i, "ProjectID", row.ProjectID, "text", rowErrors) + '</td>';
-        html += '<td>' + this._renderInputCell(i, "Description", row.Description, "text", rowErrors) + '</td>';
-        html += '<td>' + this._renderSelectCell(i, "CustomerID", row.CustomerID, this._customerOptions, rowErrors) + '</td>';
-        html += '<td>' + this._renderInputCell(i, "ProjectStartDate", row.ProjectStartDate, "date", rowErrors) + '</td>';
-        html += '<td>' + this._renderInputCell(i, "ProjectEndDate", row.ProjectEndDate, "date", rowErrors) + '</td>';
-        html += '<td>' + this._renderInputCell(i, "ChanceOfWinning", row.ChanceOfWinning, "number", rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "GLACCOUNT", row.GLACCOUNT, this._glAccountOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "COSTCENTER", row.COSTCENTER, this._costCenterOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "PROFITCENTER", row.PROFITCENTER, this._profitCenterOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "SEGMENT", row.SEGMENT, this._segmentOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "Hierarchy", row.Hierarchy, this._hierarchyOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderReadOnlyCell("ID", row.ID, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "MANAGEMENT_MAPPING", row.MANAGEMENT_MAPPING, this._managementMappingOptions, rowErrors) + '</td>';
+        html += '<td>' + this._renderSelectCell(i, "MANAGEMENT_SUB_MAPPING", row.MANAGEMENT_SUB_MAPPING, this._managementSubMappingOptions, rowErrors) + '</td>';
         html += '</tr>';
       }
 
@@ -297,14 +358,13 @@
       return '<input class="row-checkbox" data-row="' + rowIndex + '" data-field="selected" data-type="checkbox" type="checkbox" ' + (checked ? 'checked' : '') + ' />';
     }
 
-    _renderInputCell(rowIndex, fieldName, value, inputType, rowErrors) {
+    _renderReadOnlyCell(fieldName, value, rowErrors) {
       return ''
-        + '<input class="cell"'
-        + ' data-row="' + rowIndex + '"'
+        + '<input class="cell readonly"'
         + ' data-field="' + fieldName + '"'
-        + ' data-type="input"'
-        + ' type="' + inputType + '"'
-        + ' value="' + this._escape(value) + '" />'
+        + ' type="text"'
+        + ' value="' + this._escape(value) + '"'
+        + ' readonly />'
         + this._renderFieldErrors(fieldName, rowErrors);
     }
 
@@ -419,6 +479,7 @@
           var value = this.value;
 
           that._rows[rowIndex][fieldName] = value;
+          that._updateRowId(that._rows[rowIndex]);
           that._rows[rowIndex].isModified = true;
           that._rows[rowIndex].rowStatus = "CHANGED";
           that._validationErrors = [];
@@ -483,13 +544,14 @@
             selected: false,
             isModified: true,
             rowStatus: "NEW",
-            CompanyCode: this._rows[i].CompanyCode || "",
-            ProjectID: this._rows[i].ProjectID || "",
-            Description: this._rows[i].Description || "",
-            CustomerID: this._rows[i].CustomerID || "",
-            ProjectStartDate: this._rows[i].ProjectStartDate || "",
-            ProjectEndDate: this._rows[i].ProjectEndDate || "",
-            ChanceOfWinning: this._rows[i].ChanceOfWinning || ""
+            GLACCOUNT: this._rows[i].GLACCOUNT || "",
+            COSTCENTER: this._rows[i].COSTCENTER || "",
+            PROFITCENTER: this._rows[i].PROFITCENTER || "",
+            SEGMENT: this._rows[i].SEGMENT || "",
+            Hierarchy: this._rows[i].Hierarchy || "",
+            ID: this._rows[i].ID || "",
+            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING || "",
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING || ""
           });
         }
       }
@@ -499,6 +561,7 @@
       }
 
       for (var j = 0; j < copiedRows.length; j++) {
+        this._updateRowId(copiedRows[j]);
         this._rows.push(copiedRows[j]);
       }
 
@@ -547,65 +610,47 @@
       this._fireSimpleEvent("onDataChange", { rows: this._rows });
     }
 
-    _isValidDate(value) {
-      if (!value) {
-        return false;
-      }
-      return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
-    }
-
     validate() {
       var errors = [];
-      var projectMap = {};
+      var idMap = {};
 
       for (var i = 0; i < this._rows.length; i++) {
         var row = this._rows[i];
         var rowIndex = i + 1;
 
-        if (!row.CompanyCode) {
-          errors.push({ rowIndex: rowIndex, field: "CompanyCode", message: "Company Code is mandatory" });
+        if (!row.GLACCOUNT) {
+          errors.push({ rowIndex: rowIndex, field: "GLACCOUNT", message: "GLACCOUNT is mandatory" });
         }
-        if (!row.ProjectID) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectID", message: "Project ID is mandatory" });
+        if (!row.COSTCENTER) {
+          errors.push({ rowIndex: rowIndex, field: "COSTCENTER", message: "COSTCENTER is mandatory" });
         }
-        if (!row.Description) {
-          errors.push({ rowIndex: rowIndex, field: "Description", message: "Description is mandatory" });
+        if (!row.PROFITCENTER) {
+          errors.push({ rowIndex: rowIndex, field: "PROFITCENTER", message: "PROFITCENTER is mandatory" });
         }
-        if (!row.CustomerID) {
-          errors.push({ rowIndex: rowIndex, field: "CustomerID", message: "Customer ID is mandatory" });
+        if (!row.SEGMENT) {
+          errors.push({ rowIndex: rowIndex, field: "SEGMENT", message: "SEGMENT is mandatory" });
         }
-        if (!row.ProjectStartDate) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectStartDate", message: "Project Start Date is mandatory" });
+        if (!row.Hierarchy) {
+          errors.push({ rowIndex: rowIndex, field: "Hierarchy", message: "Hierarchy is mandatory" });
         }
-        if (row.ProjectStartDate && !this._isValidDate(row.ProjectStartDate)) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectStartDate", message: "Project Start Date must be in YYYY-MM-DD format" });
+        if (!row.MANAGEMENT_MAPPING) {
+          errors.push({ rowIndex: rowIndex, field: "MANAGEMENT_MAPPING", message: "MANAGEMENT MAPPING is mandatory" });
         }
-        if (!row.ProjectEndDate) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectEndDate", message: "Project End Date is mandatory" });
-        }
-        if (row.ProjectEndDate && !this._isValidDate(row.ProjectEndDate)) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectEndDate", message: "Project End Date must be in YYYY-MM-DD format" });
-        }
-        if (row.ProjectStartDate && row.ProjectEndDate && row.ProjectEndDate < row.ProjectStartDate) {
-          errors.push({ rowIndex: rowIndex, field: "ProjectEndDate", message: "Project End Date must be greater than or equal to Start Date" });
-        }
-        if (row.ChanceOfWinning === "") {
-          errors.push({ rowIndex: rowIndex, field: "ChanceOfWinning", message: "Chance of Winning is mandatory" });
-        }
-        if (row.ChanceOfWinning !== "" && (Number(row.ChanceOfWinning) < 0 || Number(row.ChanceOfWinning) > 100)) {
-          errors.push({ rowIndex: rowIndex, field: "ChanceOfWinning", message: "Chance of Winning must be between 0 and 100" });
+        if (!row.MANAGEMENT_SUB_MAPPING) {
+          errors.push({ rowIndex: rowIndex, field: "MANAGEMENT_SUB_MAPPING", message: "MANAGEMENT SUB-MAPPING is mandatory" });
         }
 
-        var projectKey = [
-          this._safeString(row.CompanyCode),
-          this._safeString(row.ProjectID)
-        ].join("|");
+        this._updateRowId(row);
 
-        if (projectKey !== "|") {
-          if (projectMap[projectKey]) {
-            errors.push({ rowIndex: rowIndex, field: "ProjectID", message: "Duplicate Company Code + Project ID found" });
+        if (!row.ID) {
+          errors.push({ rowIndex: rowIndex, field: "ID", message: "ID could not be generated" });
+        }
+
+        if (row.ID) {
+          if (idMap[row.ID]) {
+            errors.push({ rowIndex: rowIndex, field: "ID", message: "Duplicate ID found" });
           } else {
-            projectMap[projectKey] = true;
+            idMap[row.ID] = true;
           }
         }
       }
@@ -641,13 +686,14 @@
       for (var i = 0; i < this._rows.length; i++) {
         if (this._rows[i].selected === true) {
           payload.push({
-            CompanyCode: this._rows[i].CompanyCode,
-            ProjectID: this._rows[i].ProjectID,
-            Description: this._rows[i].Description,
-            CustomerID: this._rows[i].CustomerID,
-            ProjectStartDate: this._rows[i].ProjectStartDate,
-            ProjectEndDate: this._rows[i].ProjectEndDate,
-            ChanceOfWinning: this._rows[i].ChanceOfWinning
+            GLACCOUNT: this._rows[i].GLACCOUNT,
+            COSTCENTER: this._rows[i].COSTCENTER,
+            PROFITCENTER: this._rows[i].PROFITCENTER,
+            SEGMENT: this._rows[i].SEGMENT,
+            Hierarchy: this._rows[i].Hierarchy,
+            ID: this._rows[i].ID,
+            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING
           });
         }
       }
@@ -762,18 +808,43 @@
       return this._lastEvent || "";
     }
 
-    setCompanyCodeOptions(json) {
-      this._companyCodeOptions = this._parseOptions(json);
+    setGlAccountOptions(json) {
+      this._glAccountOptions = this._parseOptions(json);
       this._refreshTable();
     }
 
-    setCustomerOptions(json) {
-      this._customerOptions = this._parseOptions(json);
+    setCostCenterOptions(json) {
+      this._costCenterOptions = this._parseOptions(json);
+      this._refreshTable();
+    }
+
+    setProfitCenterOptions(json) {
+      this._profitCenterOptions = this._parseOptions(json);
+      this._refreshTable();
+    }
+
+    setSegmentOptions(json) {
+      this._segmentOptions = this._parseOptions(json);
+      this._refreshTable();
+    }
+
+    setHierarchyOptions(json) {
+      this._hierarchyOptions = this._parseOptions(json);
+      this._refreshTable();
+    }
+
+    setManagementMappingOptions(json) {
+      this._managementMappingOptions = this._parseOptions(json);
+      this._refreshTable();
+    }
+
+    setManagementSubMappingOptions(json) {
+      this._managementSubMappingOptions = this._parseOptions(json);
       this._refreshTable();
     }
   }
 
-  if (!customElements.get("com-company-projectentrywidget")) {
-    customElements.define("com-company-projectentrywidget", ProjectEntryWidget);
+  if (!customElements.get("com-company-managementwidget")) {
+    customElements.define("com-company-managementwidget", ProjectEntryWidget);
   }
 })();
