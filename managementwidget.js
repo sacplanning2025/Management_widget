@@ -2047,7 +2047,7 @@
       return this._lastEvent || "";
     }
 
-    setGLAccountOptions(json) {
+    setGlAccountOptions(json) {
       this._glAccountOptions = this._parseOptions(json);
       this._refreshTable();
     }
