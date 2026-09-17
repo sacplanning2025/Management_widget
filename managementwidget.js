@@ -887,6 +887,7 @@
       this._dropdownBatchSize = 100;
       this._dropdownRenderedCount = 0;
       this._dropdownSearchTimer = null;
+      this._dropdownListMoreEl = null;
 
       this._columns = [
         { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
@@ -1891,79 +1892,82 @@
     }
 
     save() {
-  var validationResult = this.validate();
+      var validationResult = this.validate();
 
-  if (validationResult !== "true") {
-    this._lastEvent = JSON.stringify({
-      type: "save",
-      status: "VALIDATION_FAILED",
-      validationResult: this._validationResult,
-      errorCount: this._validationErrors.length
-    });
-    this._widgetStatus = "ERROR";
-    this._syncRows();
-    this._fireSimpleEvent("onDataChange", {
-      rows: this._rows,
-      savePayload: [],
-      validationErrors: this._validationErrors
-    });
-    return;
-  }
+      if (validationResult !== "true") {
+        this._savePayload = [];
+        this._lastEvent = JSON.stringify({
+          type: "save",
+          status: "VALIDATION_FAILED",
+          validationResult: this._validationResult,
+          errorCount: this._validationErrors.length
+        });
+        this._widgetStatus = "ERROR";
+        this._syncRows();
+        this._fireSimpleEvent("onDataChange", {
+          rows: this._rows,
+          savePayload: [],
+          validationErrors: this._validationErrors
+        });
+        return;
+      }
 
-  var payload = [];
+      var payload = [];
 
-  for (var i = 0; i < this._rows.length; i++) {
-    if (this._rows[i].selected === true) {
-      payload.push({
-        GLACCOUNT: this._rows[i].GLACCOUNT,
-        COSTCENTER: this._rows[i].COSTCENTER,
-        PROFITCENTER: this._rows[i].PROFITCENTER,
-        SEGMENT: this._rows[i].SEGMENT,
-        ID: this._rows[i].ID,
-        MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
-        MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
-        Hierarchy: this._rows[i].Hierarchy
+      for (var i = 0; i < this._rows.length; i++) {
+        if (this._rows[i].selected === true) {
+          payload.push({
+            GLACCOUNT: this._rows[i].GLACCOUNT,
+            COSTCENTER: this._rows[i].COSTCENTER,
+            PROFITCENTER: this._rows[i].PROFITCENTER,
+            SEGMENT: this._rows[i].SEGMENT,
+            ID: this._rows[i].ID,
+            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
+            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
+            Hierarchy: this._rows[i].Hierarchy
+          });
+        }
+      }
+
+      if (payload.length === 0) {
+        this._savePayload = [];
+        this._validationErrors = [{
+          rowIndex: 1,
+          field: "selected",
+          message: "Please select at least one row to save"
+        }];
+        this._validationResult = "false";
+        this._widgetStatus = "ERROR";
+        this._lastEvent = JSON.stringify({
+          type: "save",
+          status: "NO_SELECTION",
+          payloadCount: 0
+        });
+        this._syncRows();
+        this._refreshTable();
+        this._fireSimpleEvent("onDataChange", {
+          rows: this._rows,
+          savePayload: [],
+          validationErrors: this._validationErrors
+        });
+        return;
+      }
+
+      this._validationErrors = [];
+      this._validationResult = "true";
+      this._savePayload = payload;
+      this._lastEvent = JSON.stringify({
+        type: "save",
+        status: "READY",
+        payloadCount: payload.length
+      });
+      this._widgetStatus = "SAVE_READY";
+      this._syncRows();
+      this._fireSimpleEvent("onDataChange", {
+        rows: this._rows,
+        savePayload: payload
       });
     }
-  }
-
-  if (payload.length === 0) {
-    this._validationErrors = [{
-      rowIndex: 0,
-      field: "selected",
-      message: "Please select at least one row to save"
-    }];
-    this._validationResult = "false";
-    this._widgetStatus = "ERROR";
-    this._lastEvent = JSON.stringify({
-      type: "save",
-      status: "NO_SELECTION",
-      payloadCount: 0
-    });
-    this._syncRows();
-    this._refreshTable();
-    this._fireSimpleEvent("onDataChange", {
-      rows: this._rows,
-      savePayload: [],
-      validationErrors: this._validationErrors
-    });
-    return;
-  }
-
-  this._savePayload = payload;
-  this._lastEvent = JSON.stringify({
-    type: "save",
-    status: "READY",
-    payloadCount: payload.length
-  });
-  this._widgetStatus = "SAVE_READY";
-  this._syncRows();
-  this._fireSimpleEvent("onDataChange", {
-    rows: this._rows,
-    savePayload: payload
-  });
-}
-
 
     getRows() {
       return JSON.stringify(this._rows || []);
@@ -2043,7 +2047,7 @@
       return this._lastEvent || "";
     }
 
-    setGlAccountOptions(json) {
+    setGLAccountOptions(json) {
       this._glAccountOptions = this._parseOptions(json);
       this._refreshTable();
     }
@@ -2168,4 +2172,3 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
-
