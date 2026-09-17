@@ -1,4 +1,4 @@
-(function () {
+/*(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -850,8 +850,8 @@
     customElements.define("com-company-managementwidget", ProjectEntryWidget);
   }
 })();
-
-/*(function () {
+*/
+(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -1891,60 +1891,79 @@
     }
 
     save() {
-      var validationResult = this.validate();
+  var validationResult = this.validate();
 
-      if (validationResult !== "true") {
-        return;
-      }
+  if (validationResult !== "true") {
+    this._lastEvent = JSON.stringify({
+      type: "save",
+      status: "VALIDATION_FAILED",
+      validationResult: this._validationResult,
+      errorCount: this._validationErrors.length
+    });
+    this._widgetStatus = "ERROR";
+    this._syncRows();
+    this._fireSimpleEvent("onDataChange", {
+      rows: this._rows,
+      savePayload: [],
+      validationErrors: this._validationErrors
+    });
+    return;
+  }
 
-      var payload = [];
+  var payload = [];
 
-      for (var i = 0; i < this._rows.length; i++) {
-        if (this._rows[i].selected === true) {
-          payload.push({
-            GLACCOUNT: this._rows[i].GLACCOUNT,
-            COSTCENTER: this._rows[i].COSTCENTER,
-            PROFITCENTER: this._rows[i].PROFITCENTER,
-            SEGMENT: this._rows[i].SEGMENT,
-            ID: this._rows[i].ID,
-            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
-            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
-            Hierarchy: this._rows[i].Hierarchy
-          });
-        }
-      }
-
-      if (payload.length === 0) {
-        this._validationErrors = [{
-          rowIndex: 0,
-          field: "selected",
-          message: "Please select at least one row to save"
-        }];
-        this._validationResult = "false";
-        this._widgetStatus = "ERROR";
-        this._lastEvent = JSON.stringify({
-          type: "save",
-          status: "NO_SELECTION"
-        });
-        this._syncRows();
-        this._refreshTable();
-        this._fireSimpleEvent("onValidate", {
-          validationResult: this._validationResult,
-          validationErrors: this._validationErrors
-        });
-        return;
-      }
-
-      this._savePayload = payload;
-      this._lastEvent = JSON.stringify({
-        type: "save",
-        status: "READY",
-        payloadCount: payload.length
+  for (var i = 0; i < this._rows.length; i++) {
+    if (this._rows[i].selected === true) {
+      payload.push({
+        GLACCOUNT: this._rows[i].GLACCOUNT,
+        COSTCENTER: this._rows[i].COSTCENTER,
+        PROFITCENTER: this._rows[i].PROFITCENTER,
+        SEGMENT: this._rows[i].SEGMENT,
+        ID: this._rows[i].ID,
+        MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
+        MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
+        Hierarchy: this._rows[i].Hierarchy
       });
-      this._widgetStatus = "SAVE_READY";
-      this._syncRows();
-      this._fireSimpleEvent("onDataChange", { rows: this._rows, savePayload: payload });
     }
+  }
+
+  if (payload.length === 0) {
+    this._validationErrors = [{
+      rowIndex: 0,
+      field: "selected",
+      message: "Please select at least one row to save"
+    }];
+    this._validationResult = "false";
+    this._widgetStatus = "ERROR";
+    this._lastEvent = JSON.stringify({
+      type: "save",
+      status: "NO_SELECTION",
+      payloadCount: 0
+    });
+    this._syncRows();
+    this._refreshTable();
+    this._fireSimpleEvent("onDataChange", {
+      rows: this._rows,
+      savePayload: [],
+      validationErrors: this._validationErrors
+    });
+    return;
+  }
+
+  this._savePayload = payload;
+  this._lastEvent = JSON.stringify({
+    type: "save",
+    status: "READY",
+    payloadCount: payload.length
+  });
+  this._widgetStatus = "SAVE_READY";
+  this._syncRows();
+  this._fireSimpleEvent("onDataChange", {
+    rows: this._rows,
+    savePayload: payload
+  });
+}
+
 
     getRows() {
       return JSON.stringify(this._rows || []);
@@ -2149,4 +2168,4 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
-*/
+
