@@ -2146,7 +2146,7 @@
         'position:sticky;' +
         'bottom:0;' +
       '}';
-*/
     document.head.appendChild(globalStyleEl);
   })();
 })();
+*/
