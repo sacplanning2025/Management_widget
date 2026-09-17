@@ -1,4 +1,4 @@
-/*(function () {
+(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -850,8 +850,8 @@
     customElements.define("com-company-managementwidget", ProjectEntryWidget);
   }
 })();
-*/
-(function () {
+
+/*(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -2146,7 +2146,7 @@
         'position:sticky;' +
         'bottom:0;' +
       '}';
-
+*/
     document.head.appendChild(globalStyleEl);
   })();
 })();
