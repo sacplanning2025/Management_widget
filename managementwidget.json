@@ -100,7 +100,14 @@
         { "name": "json", "type": "string" }
       ]
     },
-
+     "setRowFieldOptions": {
+      "parameters": [
+        { "name": "rowIndex", "type": "integer" },
+        { "name": "fieldName", "type": "string" },
+        { "name": "json", "type": "string" }
+      ]
+    },
+      
     "getLastEvent": { "returnType": "string" }
   },
   "events": {
