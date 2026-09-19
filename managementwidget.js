@@ -1321,14 +1321,17 @@
   })();
 })();
 */
-(function () {
+
+
+
+/*(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
       this._shadowRoot = this.attachShadow({ mode: "open" });
 
       this._rows = [];
-      this._validationErrors = [];
+      this._validationErrors = [];*/
       this._validationResult = "true";
       this._lastEvent = "";
       this._savePayload = [];
