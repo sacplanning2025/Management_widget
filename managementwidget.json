@@ -1,8 +1,8 @@
 {
   "id": "com.company.managementwidget",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "name": "Project Entry Widget",
-  "description": "Management mapping table widget for SAC",
+  "description": "Management mapping table widget for SAC with Create Mapping and Manage Mapping",
   "vendor": "NTT",
   "newInstancePrefix": "ProjectEntryWidget",
   "icon": "sap-icon://table-view",
@@ -17,6 +17,8 @@
   ],
   "properties": {
     "rows": { "type": "string", "default": "[]" },
+    "managedata": { "type": "string", "default": "[]" },
+    "activetab": { "type": "string", "default": "create" },
     "lastEvent": { "type": "string", "default": "" },
     "validationResult": { "type": "string", "default": "true" },
     "validationErrors": { "type": "string", "default": "[]" },
@@ -34,14 +36,38 @@
     "managementSubMappingOptions": { "type": "string", "default": "[]" }
   },
   "methods": {
-    "getRows": { "returnType": "string" },
+    "getRows": {
+      "description": "Get create mapping rows",
+      "returnType": "string"
+    },
     "setRows": {
+      "description": "Set create mapping rows",
       "parameters": [
         { "name": "rowsJson", "type": "string" }
       ]
     },
-    "getRowCount": { "returnType": "integer" },
-    "getSelectedRowCount": { "returnType": "integer" },
+    "getManageData": {
+      "description": "Get manage mapping rows",
+      "returnType": "string"
+    },
+    "setManageData": {
+      "description": "Set manage mapping rows",
+      "parameters": [
+        { "name": "rowsJson", "type": "string" }
+      ]
+    },
+    "setActiveTab": {
+      "description": "Set active tab",
+      "parameters": [
+        { "name": "tabName", "type": "string" }
+      ]
+    },
+    "getRowCount": {
+      "returnType": "integer"
+    },
+    "getSelectedRowCount": {
+      "returnType": "integer"
+    },
     "getRowValue": {
       "parameters": [
         { "name": "rowIndex", "type": "integer" },
@@ -56,16 +82,46 @@
       ],
       "returnType": "string"
     },
-    "addRow": {},
-    "copySelectedRows": {},
-    "deleteSelectedRows": {},
-    "clear": {},
-    "validate": { "returnType": "string" },
-    "save": {},
-    "getValidationErrors": { "returnType": "string" },
-    "getValidationResult": { "returnType": "string" },
-
+    "addRow": {
+      "description": "Add row in create mapping"
+    },
+    "copySelectedRows": {
+      "description": "Copy selected rows in create mapping"
+    },
+    "deleteSelectedRows": {
+      "description": "Delete selected rows in create mapping"
+    },
+    "clear": {
+      "description": "Clear active tab data"
+    },
+    "validate": {
+      "description": "Validate create mapping only",
+      "returnType": "string"
+    },
+    "save": {
+      "description": "Save create mapping selected rows"
+    },
+    "loadManageData": {
+      "description": "Trigger load for manage mapping"
+    },
+    "saveManageData": {
+      "description": "Trigger save for manage mapping"
+    },
+    "deleteManageData": {
+      "description": "Trigger delete for manage mapping"
+    },
+    "getValidationErrors": {
+      "returnType": "string"
+    },
+    "getValidationResult": {
+      "returnType": "string"
+    },
     "setGlAccountOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "setGLAccountOptions": {
       "parameters": [
         { "name": "json", "type": "string" }
       ]
@@ -100,15 +156,25 @@
         { "name": "json", "type": "string" }
       ]
     },
-     "setRowFieldOptions": {
+    "setRowFieldOptions": {
+      "description": "Set create row field options",
       "parameters": [
         { "name": "rowIndex", "type": "integer" },
         { "name": "fieldName", "type": "string" },
         { "name": "json", "type": "string" }
       ]
     },
-      
-    "getLastEvent": { "returnType": "string" }
+    "setManageRowFieldOptions": {
+      "description": "Set manage row field options",
+      "parameters": [
+        { "name": "rowIndex", "type": "integer" },
+        { "name": "fieldName", "type": "string" },
+        { "name": "json", "type": "string" }
+      ]
+    },
+    "getLastEvent": {
+      "returnType": "string"
+    }
   },
   "events": {
     "onFieldChange": {},
