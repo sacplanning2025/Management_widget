@@ -1500,9 +1500,9 @@
 })();
 */
 
-(function () {
+/*(function () {
   class ProjectEntryWidget extends HTMLElement {
-    constructor() {
+    constructor() {*/
       super();
       this._shadowRoot = this.attachShadow({ mode: "open" });
 
