@@ -1,8 +1,8 @@
 {
   "id": "com.company.managementwidget",
-  "version": "3.0.0",
+  "version": "2.0.0",
   "name": "Project Entry Widget",
-  "description": "Management mapping table widget for SAC with Create Mapping and Manage Mapping",
+  "description": "Management mapping table widget for SAC",
   "vendor": "NTT",
   "newInstancePrefix": "ProjectEntryWidget",
   "icon": "sap-icon://table-view",
