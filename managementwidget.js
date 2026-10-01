@@ -1439,8 +1439,12 @@
           });
         }
       }
+    }
 
+    _bindCellEvents() {
+      var that = this;
       var allElements = this._shadowRoot.querySelectorAll("[data-row][data-field]");
+
       Array.prototype.forEach.call(allElements, function (el) {
         var type = el.getAttribute("data-type");
         var tabName = el.getAttribute("data-tab");
@@ -1451,6 +1455,10 @@
             var fieldName = this.getAttribute("data-field");
             var value = this.checked;
             var rows = that._getRowsByTab(tabName);
+
+            if (!rows[rowIndex]) {
+              return;
+            }
 
             rows[rowIndex][fieldName] = value;
             rows[rowIndex].isModified = true;
@@ -1492,6 +1500,7 @@
               that._openDropdown(this, tabName, rowIndex, fieldName);
             }
           });
+          return;
         }
       });
     }
