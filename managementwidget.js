@@ -1441,7 +1441,7 @@
       }
     }
 
-    _bindCellEvents() {
+   /* _bindCellEvents() {
       var that = this;
       var allElements = this._shadowRoot.querySelectorAll("[data-row][data-field]");
 
@@ -1504,7 +1504,7 @@
         }
       });
     }
-
+*/
     _changeTabFromUI(tabName) {
       if (tabName !== "create" && tabName !== "manage") {
         tabName = "create";
@@ -1861,7 +1861,7 @@
         return;
       }
 
-     /* var payload = [];
+      var payload = [];
       var visibleIndexes = this._getManagePagedIndexes();
 
       for (var x = 0; x < visibleIndexes.length; x++) {
@@ -1948,7 +1948,7 @@
             rowStatus: "DELETE"
           });
         }
-      }*/
+      }
 
       if (payload.length === 0) {
         this._savePayload = [];
