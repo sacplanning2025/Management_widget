@@ -1551,17 +1551,30 @@
       this._dropdownSearchTimer = null;
       this._dropdownListMoreEl = null;
 
-      this._columns = [
-        { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
-        { key: "GLACCOUNT", label: "GLACCOUNT", type: "select", width: "180px" },
-        { key: "COSTCENTER", label: "COSTCENTER", type: "select", width: "180px" },
-        { key: "PROFITCENTER", label: "PROFITCENTER", type: "select", width: "180px" },
-        { key: "SEGMENT", label: "SEGMENT", type: "select", width: "140px" },
-        { key: "ID", label: "ID", type: "readonly", width: "210px" },
-        { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "250px" },
-        { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "230px" },
-        { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
-      ];
+     this._createColumns = [
+    { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
+    { key: "GLACCOUNT", label: "GLACCOUNT", type: "select", width: "180px" },
+    { key: "COSTCENTER", label: "COSTCENTER", type: "select", width: "180px" },
+    { key: "PROFITCENTER", label: "PROFITCENTER", type: "select", width: "180px" },
+    { key: "SEGMENT", label: "SEGMENT", type: "select", width: "140px" },
+    { key: "ID", label: "ID", type: "readonly", width: "210px" },
+    { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "250px" },
+    { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "230px" },
+    { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
+  ];
+  
+  this._manageColumns = [
+    { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
+    { key: "ID", label: "ID", type: "readonly", width: "210px" },
+    { key: "GLACCOUNT", label: "GLACCOUNT", type: "select", width: "180px" },
+    { key: "COSTCENTER", label: "COSTCENTER", type: "select", width: "180px" },
+    { key: "PROFITCENTER", label: "PROFITCENTER", type: "select", width: "180px" },
+    { key: "SEGMENT", label: "SEGMENT", type: "select", width: "140px" },
+    { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "250px" },
+    { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "230px" },
+    { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
+  ];
+
 
       this._render();
     }
@@ -2148,6 +2161,7 @@
       var allSelected = this._areAllRowsSelected(this._activeTab);
       var rowErrorMap = this._getRowErrorMap();
       var selectAllId = this._activeTab === "manage" ? "selectAllManage" : "selectAllCreate";
+      var activeColumns = this._activeTab === "manage" ? this._manageColumns : this._createColumns;
 
       var html = '';
       html += '<div class="tabbar">';
@@ -2185,8 +2199,8 @@
       html += '<table>';
       html += '<thead><tr>';
 
-      for (var h = 0; h < this._columns.length; h++) {
-        var col = this._columns[h];
+      for (var h = 0; h < activeColumns.length; h++) {
+      var col = activeColumns[h];
         if (col.key === "selected") {
           html += '<th style="width:' + col.width + '"><div class="select-all-wrap"><span>Sel</span><input class="select-all-checkbox" type="checkbox" id="' + selectAllId + '" ' + (allSelected ? 'checked' : '') + ' /></div></th>';
         } else {
@@ -2214,10 +2228,9 @@
 
         html += '<tr class="' + rowClass + '">';
 
-        for (var c = 0; c < this._columns.length; c++) {
-          html += '<td style="width:' + this._columns[c].width + '">' + this._renderCell(this._activeTab, row, i, this._columns[c], rowErrors) + '</td>';
-        }
-
+        for (var c = 0; c < activeColumns.length; c++) {
+        html += '<td style="width:' + activeColumns[c].width + '">' + this._renderCell(this._activeTab, row, i, activeColumns[c], rowErrors) + '</td>';
+      }
         html += '</tr>';
       }
 
