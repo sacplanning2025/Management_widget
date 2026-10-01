@@ -1,6 +1,6 @@
 {
   "id": "com.company.managementwidget",
-  "version": "2.0.0",
+  "version": "3.1.0",
   "name": "Project Entry Widget",
   "description": "Management mapping table widget for SAC",
   "vendor": "NTT",
@@ -38,7 +38,8 @@
     "manageGlAccountFilter": { "type": "string", "default": "[]" },
     "manageCostCenterFilter": { "type": "string", "default": "[]" },
     "manageProfitCenterFilter": { "type": "string", "default": "[]" },
-    "manageSegmentFilter": { "type": "string", "default": "[]" }
+    "manageSegmentFilter": { "type": "string", "default": "[]" },
+    "manageIdSearch": { "type": "string", "default": "" }
   },
   "methods": {
     "getRows": {
@@ -210,6 +211,12 @@
       "description": "Filter manage rows by selected Segments",
       "parameters": [
         { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageIdSearch": {
+      "description": "Filter manage rows by ID search text",
+      "parameters": [
+        { "name": "value", "type": "string" }
       ]
     },
 
