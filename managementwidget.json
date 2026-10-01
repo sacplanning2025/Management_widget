@@ -33,7 +33,12 @@
     "segmentOptions": { "type": "string", "default": "[]" },
     "hierarchyOptions": { "type": "string", "default": "[]" },
     "managementMappingOptions": { "type": "string", "default": "[]" },
-    "managementSubMappingOptions": { "type": "string", "default": "[]" }
+    "managementSubMappingOptions": { "type": "string", "default": "[]" },
+
+    "manageGlAccountFilter": { "type": "string", "default": "[]" },
+    "manageCostCenterFilter": { "type": "string", "default": "[]" },
+    "manageProfitCenterFilter": { "type": "string", "default": "[]" },
+    "manageSegmentFilter": { "type": "string", "default": "[]" }
   },
   "methods": {
     "getRows": {
@@ -116,6 +121,7 @@
     "getValidationResult": {
       "returnType": "string"
     },
+
     "setGlAccountOptions": {
       "parameters": [
         { "name": "json", "type": "string" }
@@ -156,6 +162,57 @@
         { "name": "json", "type": "string" }
       ]
     },
+
+    "setGlAccountDropdownOptionsOnly": {
+      "description": "Set GL Account dropdown options only without auto-filling rows",
+      "parameters": [
+        { "name": "optionsStr", "type": "string" }
+      ]
+    },
+    "setCostCenterDropdownOptionsOnly": {
+      "description": "Set Cost Center dropdown options only without auto-filling rows",
+      "parameters": [
+        { "name": "optionsStr", "type": "string" }
+      ]
+    },
+    "setProfitCenterDropdownOptionsOnly": {
+      "description": "Set Profit Center dropdown options only without auto-filling rows",
+      "parameters": [
+        { "name": "optionsStr", "type": "string" }
+      ]
+    },
+    "setSegmentDropdownOptionsOnly": {
+      "description": "Set Segment dropdown options only without auto-filling rows",
+      "parameters": [
+        { "name": "optionsStr", "type": "string" }
+      ]
+    },
+
+    "setManageGlAccountFilter": {
+      "description": "Filter manage rows by selected GL Accounts",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageCostCenterFilter": {
+      "description": "Filter manage rows by selected Cost Centers",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageProfitCenterFilter": {
+      "description": "Filter manage rows by selected Profit Centers",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageSegmentFilter": {
+      "description": "Filter manage rows by selected Segments",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+
     "setRowFieldOptions": {
       "description": "Set create row field options",
       "parameters": [
