@@ -1861,7 +1861,7 @@
         return;
       }
 
-      var payload = [];
+     /* var payload = [];
       var visibleIndexes = this._getManagePagedIndexes();
 
       for (var x = 0; x < visibleIndexes.length; x++) {
@@ -1933,7 +1933,7 @@
       var payload = [];
       var visibleIndexes = this._getManagePagedIndexes();
 
-      /*for (var x = 0; x < visibleIndexes.length; x++) {
+      for (var x = 0; x < visibleIndexes.length; x++) {
         var i = visibleIndexes[x];
         if (this._manageRows[i].selected === true) {
           payload.push({
