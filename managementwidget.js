@@ -1441,7 +1441,7 @@
       }
     }
 
-   /* _bindCellEvents() {
+    _bindCellEvents() {
       var that = this;
       var allElements = this._shadowRoot.querySelectorAll("[data-row][data-field]");
 
@@ -1504,7 +1504,7 @@
         }
       });
     }
-*/
+
     _changeTabFromUI(tabName) {
       if (tabName !== "create" && tabName !== "manage") {
         tabName = "create";
