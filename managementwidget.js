@@ -1529,6 +1529,11 @@
       this._rowOptions = {};
       this._manageRowOptions = {};
 
+      this._manageGlAccountFilter = [];
+      this._manageCostCenterFilter = [];
+      this._manageProfitCenterFilter = [];
+      this._manageSegmentFilter = [];
+
       this._dropdownPanel = null;
       this._dropdownSearch = null;
       this._dropdownList = null;
@@ -1608,7 +1613,11 @@
         "segmentOptions",
         "hierarchyOptions",
         "managementMappingOptions",
-        "managementSubMappingOptions"
+        "managementSubMappingOptions",
+        "manageGlAccountFilter",
+        "manageCostCenterFilter",
+        "manageProfitCenterFilter",
+        "manageSegmentFilter"
       ];
     }
 
@@ -1671,6 +1680,26 @@
       if (name === "managementSubMappingOptions") {
         this._managementSubMappingOptions = this._parseOptions(newValue);
         this._refreshTable();
+        return;
+      }
+
+      if (name === "manageGlAccountFilter") {
+        this.setManageGlAccountFilter(newValue || "[]");
+        return;
+      }
+
+      if (name === "manageCostCenterFilter") {
+        this.setManageCostCenterFilter(newValue || "[]");
+        return;
+      }
+
+      if (name === "manageProfitCenterFilter") {
+        this.setManageProfitCenterFilter(newValue || "[]");
+        return;
+      }
+
+      if (name === "manageSegmentFilter") {
+        this.setManageSegmentFilter(newValue || "[]");
         return;
       }
     }
@@ -2047,12 +2076,69 @@
       return `
         <div class="summary">
           <div>Active Tab: ${this._activeTab}</div>
-          <div>Total Rows: ${this.getRowCount()}</div>
+          <div>Total Rows: ${this.getVisibleRowCount()}</div>
           <div>Selected Rows: ${this.getSelectedRowCount()}</div>
           <div>Validation: ${this._validationResult}</div>
           <div>Status: ${this._widgetStatus}</div>
         </div>
       `;
+    }
+
+    _isValueInFilter(filterArray, value) {
+      if (!filterArray || filterArray.length === 0) {
+        return true;
+      }
+
+      var cleanValue = this._safeString(value);
+      var i = 0;
+
+      for (i = 0; i < filterArray.length; i++) {
+        if (this._safeString(filterArray[i]) === cleanValue) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    _isManageRowVisible(rowData) {
+      if (!rowData) {
+        return false;
+      }
+
+      if (!this._isValueInFilter(this._manageGlAccountFilter, rowData.GLACCOUNT)) {
+        return false;
+      }
+
+      if (!this._isValueInFilter(this._manageCostCenterFilter, rowData.COSTCENTER)) {
+        return false;
+      }
+
+      if (!this._isValueInFilter(this._manageProfitCenterFilter, rowData.PROFITCENTER)) {
+        return false;
+      }
+
+      if (!this._isValueInFilter(this._manageSegmentFilter, rowData.SEGMENT)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    getVisibleRowCount() {
+      var rows = this._getActiveRows();
+
+      if (this._activeTab !== "manage") {
+        return rows.length;
+      }
+
+      var count = 0;
+      for (var i = 0; i < rows.length; i++) {
+        if (this._isManageRowVisible(rows[i])) {
+          count++;
+        }
+      }
+      return count;
     }
 
     _refreshTable() {
@@ -2112,6 +2198,11 @@
 
       for (var i = 0; i < currentRows.length; i++) {
         var row = currentRows[i];
+
+        if (this._activeTab === "manage" && this._isManageRowVisible(row) === false) {
+          continue;
+        }
+
         var rowErrors = rowErrorMap[i] || [];
         var rowClass = "";
 
@@ -2446,7 +2537,7 @@
           rows[rowIndex][fieldName] = selectedKeyValue;
           that._updateRowId(rows[rowIndex]);
           rows[rowIndex].isModified = true;
-          rows[rowIndex].rowStatus = tabName === "manage" ? "CHANGED" : "CHANGED";
+          rows[rowIndex].rowStatus = "CHANGED";
 
           that._validationErrors = [];
           that._validationResult = "true";
@@ -2648,7 +2739,11 @@
             savePayload: JSON.stringify(this._savePayload || []),
             rowCount: this.getRowCount(),
             selectedRowCount: this.getSelectedRowCount(),
-            widgetStatus: this._widgetStatus
+            widgetStatus: this._widgetStatus,
+            manageGlAccountFilter: JSON.stringify(this._manageGlAccountFilter || []),
+            manageCostCenterFilter: JSON.stringify(this._manageCostCenterFilter || []),
+            manageProfitCenterFilter: JSON.stringify(this._manageProfitCenterFilter || []),
+            manageSegmentFilter: JSON.stringify(this._manageSegmentFilter || [])
           }
         }
       }));
@@ -3153,6 +3248,10 @@
       var rows = this._getActiveRows();
       var count = 0;
       for (var i = 0; i < rows.length; i++) {
+        if (this._activeTab === "manage" && this._isManageRowVisible(rows[i]) === false) {
+          continue;
+        }
+
         if (rows[i].selected === true) {
           count++;
         }
@@ -3177,6 +3276,10 @@
       var selectedRows = [];
 
       for (var i = 0; i < rows.length; i++) {
+        if (this._activeTab === "manage" && this._isManageRowVisible(rows[i]) === false) {
+          continue;
+        }
+
         if (rows[i].selected === true) {
           selectedRows.push(rows[i]);
         }
@@ -3243,6 +3346,178 @@
     setManagementSubMappingOptions(json) {
       this._managementSubMappingOptions = this._parseOptions(json);
       this._refreshTable();
+    }
+
+    setGlAccountDropdownOptionsOnly(optionsStr) {
+      try {
+        var optionsArray = JSON.parse(optionsStr || "[]");
+
+        if (!Array.isArray(optionsArray)) {
+          optionsArray = [];
+        }
+
+        this._glAccountOptions = this._parseOptions(JSON.stringify(optionsArray));
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {}
+    }
+
+    setCostCenterDropdownOptionsOnly(optionsStr) {
+      try {
+        var optionsArray = JSON.parse(optionsStr || "[]");
+
+        if (!Array.isArray(optionsArray)) {
+          optionsArray = [];
+        }
+
+        this._costCenterOptions = this._parseOptions(JSON.stringify(optionsArray));
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {}
+    }
+
+    setProfitCenterDropdownOptionsOnly(optionsStr) {
+      try {
+        var optionsArray = JSON.parse(optionsStr || "[]");
+
+        if (!Array.isArray(optionsArray)) {
+          optionsArray = [];
+        }
+
+        this._profitCenterOptions = this._parseOptions(JSON.stringify(optionsArray));
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {}
+    }
+
+    setSegmentDropdownOptionsOnly(optionsStr) {
+      try {
+        var optionsArray = JSON.parse(optionsStr || "[]");
+
+        if (!Array.isArray(optionsArray)) {
+          optionsArray = [];
+        }
+
+        this._segmentOptions = this._parseOptions(JSON.stringify(optionsArray));
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {}
+    }
+
+    setManageGlAccountFilter(filterStr) {
+      try {
+        var filterArray = JSON.parse(filterStr || "[]");
+
+        if (!Array.isArray(filterArray)) {
+          filterArray = [];
+        }
+
+        var cleanedFilter = [];
+        var i = 0;
+
+        for (i = 0; i < filterArray.length; i++) {
+          var cleanValue = this._safeString(filterArray[i]);
+
+          if (cleanValue !== "" && cleanValue !== "ALL") {
+            cleanedFilter.push(cleanValue);
+          }
+        }
+
+        this._manageGlAccountFilter = cleanedFilter;
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {
+        this._manageGlAccountFilter = [];
+        this._syncAll();
+        this._refreshTable();
+      }
+    }
+
+    setManageCostCenterFilter(filterStr) {
+      try {
+        var filterArray = JSON.parse(filterStr || "[]");
+
+        if (!Array.isArray(filterArray)) {
+          filterArray = [];
+        }
+
+        var cleanedFilter = [];
+        var i = 0;
+
+        for (i = 0; i < filterArray.length; i++) {
+          var cleanValue = this._safeString(filterArray[i]);
+
+          if (cleanValue !== "" && cleanValue !== "ALL") {
+            cleanedFilter.push(cleanValue);
+          }
+        }
+
+        this._manageCostCenterFilter = cleanedFilter;
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {
+        this._manageCostCenterFilter = [];
+        this._syncAll();
+        this._refreshTable();
+      }
+    }
+
+    setManageProfitCenterFilter(filterStr) {
+      try {
+        var filterArray = JSON.parse(filterStr || "[]");
+
+        if (!Array.isArray(filterArray)) {
+          filterArray = [];
+        }
+
+        var cleanedFilter = [];
+        var i = 0;
+
+        for (i = 0; i < filterArray.length; i++) {
+          var cleanValue = this._safeString(filterArray[i]);
+
+          if (cleanValue !== "" && cleanValue !== "ALL") {
+            cleanedFilter.push(cleanValue);
+          }
+        }
+
+        this._manageProfitCenterFilter = cleanedFilter;
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {
+        this._manageProfitCenterFilter = [];
+        this._syncAll();
+        this._refreshTable();
+      }
+    }
+
+    setManageSegmentFilter(filterStr) {
+      try {
+        var filterArray = JSON.parse(filterStr || "[]");
+
+        if (!Array.isArray(filterArray)) {
+          filterArray = [];
+        }
+
+        var cleanedFilter = [];
+        var i = 0;
+
+        for (i = 0; i < filterArray.length; i++) {
+          var cleanValue = this._safeString(filterArray[i]);
+
+          if (cleanValue !== "" && cleanValue !== "ALL") {
+            cleanedFilter.push(cleanValue);
+          }
+        }
+
+        this._manageSegmentFilter = cleanedFilter;
+        this._syncAll();
+        this._refreshTable();
+      } catch (e) {
+        this._manageSegmentFilter = [];
+        this._syncAll();
+        this._refreshTable();
+      }
     }
 
     setRowFieldOptions(rowIndex, fieldName, json) {
@@ -3413,6 +3688,7 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
+
 
 
 
