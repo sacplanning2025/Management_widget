@@ -1,3 +1,4 @@
+/*
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -2554,10 +2555,8 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
-
-
-
-/*(function () {
+*/
+(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -2606,6 +2605,9 @@
       this._activeDropdownField = "";
       this._activeDropdownOptions = [];
       this._activeDropdownSelectedKey = "";
+      this._dropdownClearWrap = null;
+      this._dropdownClearBtn = null;
+      this._dropdownCloseBtn = null;
 
       this._filteredDropdownOptions = [];
       this._dropdownBatchSize = 100;
@@ -2838,7 +2840,9 @@
       row.MANAGEMENT_MAPPING = this._safeString(row.MANAGEMENT_MAPPING);
       row.Hierarchy = this._safeString(row.Hierarchy);
 
-      this._updateRowId(row);
+      if (!row.ID || row.ID === "") {
+        this._updateRowId(row);
+      }
     }
 
     _normalizeAllRows(rows, defaultStatus) {
@@ -3689,8 +3693,14 @@
       dropdownPanel.style.display = "none";
 
       dropdownPanel.innerHTML =
-        '<div class="dropdown-search-wrap">' +
-          '<input type="text" class="dropdown-search-input" placeholder="Search..." />' +
+        '<div class="dropdown-topbar">' +
+          '<div class="dropdown-search-wrap">' +
+            '<input type="text" class="dropdown-search-input" placeholder="Search..." />' +
+          '</div>' +
+          '<button type="button" class="dropdown-close-btn" title="Close">✕</button>' +
+        '</div>' +
+        '<div class="dropdown-clear-wrap" style="display:none;">' +
+          '<button type="button" class="dropdown-clear-btn">Clear selection</button>' +
         '</div>' +
         '<div class="dropdown-list"></div>';
 
@@ -3699,6 +3709,9 @@
       this._dropdownPanel = dropdownPanel;
       this._dropdownSearch = dropdownPanel.querySelector(".dropdown-search-input");
       this._dropdownList = dropdownPanel.querySelector(".dropdown-list");
+      this._dropdownClearWrap = dropdownPanel.querySelector(".dropdown-clear-wrap");
+      this._dropdownClearBtn = dropdownPanel.querySelector(".dropdown-clear-btn");
+      this._dropdownCloseBtn = dropdownPanel.querySelector(".dropdown-close-btn");
 
       var that = this;
 
@@ -3710,6 +3723,50 @@
         that._dropdownSearchTimer = setTimeout(function () {
           that._applyDropdownSearch(that._dropdownSearch.value);
         }, 120);
+      });
+
+      this._dropdownCloseBtn.addEventListener("click", function () {
+        that._closeDropdown();
+      });
+
+      this._dropdownClearBtn.addEventListener("click", function () {
+        var rowIndex = that._activeDropdownRow;
+        var fieldName = that._activeDropdownField;
+        var tabName = that._activeDropdownTab;
+        var rows = that._getRowsByTab(tabName);
+
+        if (!rows[rowIndex]) {
+          that._closeDropdown();
+          return;
+        }
+
+        rows[rowIndex][fieldName] = "";
+
+        if (tabName !== "manage") {
+          that._updateRowId(rows[rowIndex]);
+        }
+
+        rows[rowIndex].isModified = true;
+        rows[rowIndex].rowStatus = "CHANGED";
+
+        that._validationErrors = [];
+        that._validationResult = "true";
+        that._widgetStatus = "CHANGED";
+        that._lastEvent = JSON.stringify({
+          type: tabName === "manage" ? "manageFieldChange" : "fieldChange",
+          tab: tabName,
+          rowIndex: rowIndex,
+          field: fieldName,
+          value: ""
+        });
+
+        that._syncAll();
+        that._renderVisibleOnly();
+        that._refreshToolbarButtons();
+        that._refreshSummaryOnly();
+        that._fireSimpleEvent("onFieldChange", { tab: tabName, rowIndex: rowIndex, field: fieldName, value: "" });
+        that._fireSimpleEvent("onDataChange", { activeTab: that._activeTab, rows: that._rows, manageRows: that._manageRows });
+        that._closeDropdown();
       });
 
       this._dropdownList.addEventListener("scroll", function () {
@@ -3746,6 +3803,14 @@
 
       var rows = this._getRowsByTab(tabName);
       this._activeDropdownSelectedKey = rows[rowIndex] ? rows[rowIndex][fieldName] : "";
+
+      if (this._dropdownClearWrap) {
+        if (this._activeDropdownSelectedKey !== "") {
+          this._dropdownClearWrap.style.display = "block";
+        } else {
+          this._dropdownClearWrap.style.display = "none";
+        }
+      }
 
       var triggerRect = triggerEl.getBoundingClientRect();
       var dropdownWidth = Math.max(triggerRect.width, 320);
@@ -3862,7 +3927,11 @@
           }
 
           rows[rowIndex][fieldName] = selectedKeyValue;
-          that._updateRowId(rows[rowIndex]);
+
+          if (tabName !== "manage") {
+            that._updateRowId(rows[rowIndex]);
+          }
+
           rows[rowIndex].isModified = true;
           rows[rowIndex].rowStatus = "CHANGED";
 
@@ -5008,7 +5077,6 @@
           if (field !== "ID") {
             this._manageRows[index].isModified = true;
             this._manageRows[index].rowStatus = "CHANGED";
-            this._updateRowId(this._manageRows[index]);
           }
         }
       }
@@ -5047,10 +5115,51 @@
         'z-index:999999;' +
         'font-family:"72", Arial, sans-serif;' +
       '}' +
-      '.project-widget-dropdown-panel .dropdown-search-wrap {' +
-        'padding:8px;' +
-        'border-bottom:1px solid #e8eef5;' +
+      '.project-widget-dropdown-panel .dropdown-topbar {' +
+        'display:flex;' +
+        'align-items:center;' +
+        'gap:8px;' +
+        'padding:8px 8px 0 8px;' +
         'background:#ffffff;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-search-wrap {' +
+        'flex:1 1 auto;' +
+        'padding:0;' +
+        'border-bottom:none;' +
+        'background:#ffffff;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-close-btn {' +
+        'width:32px;' +
+        'height:32px;' +
+        'border:1px solid #b9cae0;' +
+        'border-radius:6px;' +
+        'background:#ffffff;' +
+        'color:#5d7288;' +
+        'font-size:14px;' +
+        'line-height:1;' +
+        'cursor:pointer;' +
+        'flex:0 0 auto;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-close-btn:hover {' +
+        'background:#edf5ff;' +
+        'color:#0a6ed1;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-clear-wrap {' +
+        'padding:4px 8px 8px 8px;' +
+        'background:#ffffff;' +
+        'border-bottom:1px solid #e8eef5;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-clear-btn {' +
+        'border:none;' +
+        'background:transparent;' +
+        'color:#0a6ed1;' +
+        'font-size:12px;' +
+        'font-weight:600;' +
+        'padding:0;' +
+        'cursor:pointer;' +
+      '}' +
+      '.project-widget-dropdown-panel .dropdown-clear-btn:hover {' +
+        'text-decoration:underline;' +
       '}' +
       '.project-widget-dropdown-panel .dropdown-search-input {' +
         'width:100%;' +
@@ -5109,4 +5218,3 @@
   })();
 })();
 
-*/
