@@ -1,4 +1,4 @@
-
+/*
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
