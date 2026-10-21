@@ -2556,8 +2556,8 @@
       '}';
     document.head.appendChild(globalStyleEl);
   })();
-})();
-/*
+})();  */
+
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -2629,13 +2629,13 @@
         { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
       ];
 
-      this._manageColumns = [
+     this._manageColumns = [
         { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
         { key: "ID", label: "ID", type: "readonly", width: "210px" },
-        { key: "GLACCOUNT", label: "GLACCOUNT", type: "select", width: "180px" },
-        { key: "COSTCENTER", label: "COSTCENTER", type: "select", width: "180px" },
-        { key: "PROFITCENTER", label: "PROFITCENTER", type: "select", width: "180px" },
-        { key: "SEGMENT", label: "SEGMENT", type: "select", width: "140px" },
+        { key: "GLACCOUNT", label: "GLACCOUNT", type: "readonly", width: "180px" },
+        { key: "COSTCENTER", label: "COSTCENTER", type: "readonly", width: "180px" },
+        { key: "PROFITCENTER", label: "PROFITCENTER", type: "readonly", width: "180px" },
+        { key: "SEGMENT", label: "SEGMENT", type: "readonly", width: "140px" },
         { key: "MANAGEMENT_SUB_MAPPING", label: "MANAGEMENT SUB-MAPPING", type: "select", width: "250px" },
         { key: "MANAGEMENT_MAPPING", label: "MANAGEMENT MAPPING", type: "select", width: "230px" },
         { key: "Hierarchy", label: "Hierarchy", type: "select", width: "180px" }
@@ -3571,35 +3571,37 @@
       }
     }
 
-    _renderCell(tabName, row, rowIndex, column, rowErrors) {
-      var value = row[column.key] !== undefined && row[column.key] !== null ? row[column.key] : "";
-      var hasError = this._hasFieldError(column.key, rowErrors);
-      var errorCss = hasError ? "error" : "";
+   _renderCell(tabName, row, rowIndex, column, rowErrors) {
+  var value = row[column.key] !== undefined && row[column.key] !== null ? row[column.key] : "";
+  var shouldShowError = tabName === "create" || (tabName === "manage" && column.key === "ID");
+  var hasError = shouldShowError && this._hasFieldError(column.key, rowErrors);
+  var errorCss = hasError ? "error" : "";
 
-      if (column.type === "checkbox") {
-        return '<input class="row-checkbox ' + errorCss + '" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="checkbox" type="checkbox" ' + (value === true ? 'checked' : '') + ' />';
-      }
+  if (column.type === "checkbox") {
+    return '<input class="row-checkbox ' + errorCss + '" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="checkbox" type="checkbox" ' + (value === true ? 'checked' : '') + ' />';
+  }
 
-      if (column.type === "readonly") {
-        return '<div class="readonly-cell" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="readonly">' + this._escape(String(value)) + '</div>' + this._renderFieldErrors(column.key, rowErrors);
-      }
+  if (column.type === "readonly") {
+    return '<div class="readonly-cell" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="readonly">' + this._escape(String(value)) + '</div>' + (shouldShowError ? this._renderFieldErrors(column.key, rowErrors) : "");
+  }
 
-      if (column.type === "select") {
-        var displayText = this._getOptionText(tabName, column.key, value, rowIndex);
-        if (!displayText) {
-          displayText = "Select";
-        }
-
-        return ''
-          + '<div class="dropdown-trigger ' + errorCss + '" tabindex="0" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="select">'
-          + '<span class="label">' + this._escape(String(displayText)) + '</span>'
-          + '<span class="arrow">▼</span>'
-          + '</div>'
-          + this._renderFieldErrors(column.key, rowErrors);
-      }
-
-      return "";
+  if (column.type === "select") {
+    var displayText = this._getOptionText(tabName, column.key, value, rowIndex);
+    if (!displayText) {
+      displayText = "Select";
     }
+
+    return ''
+      + '<div class="dropdown-trigger ' + errorCss + '" tabindex="0" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="select">'
+      + '<span class="label">' + this._escape(String(displayText)) + '</span>'
+      + '<span class="arrow">▼</span>'
+      + '</div>'
+      + (shouldShowError ? this._renderFieldErrors(column.key, rowErrors) : "");
+  }
+
+  return "";
+}
+
 
     _getGlobalOptionsForField(fieldName) {
       if (fieldName === "GLACCOUNT") return this._glAccountOptions || [];
