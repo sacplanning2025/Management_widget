@@ -1,4 +1,4 @@
-/*
+
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -2556,8 +2556,8 @@
       '}';
     document.head.appendChild(globalStyleEl);
   })();
-})();  */
-
+})();  
+/*
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -5221,3 +5221,4 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
+*/
