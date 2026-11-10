@@ -514,7 +514,6 @@
       if (row.COSTCENTER) parts.push(row.COSTCENTER);
       if (row.PROFITCENTER) parts.push(row.PROFITCENTER);
       if (row.SEGMENT) parts.push(row.SEGMENT);
-      if (row.SNAPSHOT) parts.push(row.SNAPSHOT);
 
       row.ID = parts.join("-");
     }
