@@ -32,6 +32,7 @@
     "profitCenterOptions": { "type": "string", "default": "[]" },
     "segmentOptions": { "type": "string", "default": "[]" },
     "hierarchyOptions": { "type": "string", "default": "[]" },
+    "snapshotOptions": { "type": "string", "default": "[]" },
     "managementMappingOptions": { "type": "string", "default": "[]" },
     "managementSubMappingOptions": { "type": "string", "default": "[]" },
 
@@ -39,6 +40,7 @@
     "manageCostCenterFilter": { "type": "string", "default": "[]" },
     "manageProfitCenterFilter": { "type": "string", "default": "[]" },
     "manageSegmentFilter": { "type": "string", "default": "[]" },
+    "manageSnapshotFilter": { "type": "string", "default": "[]" },
     "manageIdSearch": { "type": "string", "default": "" }
   },
   "methods": {
@@ -153,6 +155,11 @@
         { "name": "json", "type": "string" }
       ]
     },
+    "setSnapshotOptions": {
+      "parameters": [
+        { "name": "json", "type": "string" }
+      ]
+    },
     "setManagementMappingOptions": {
       "parameters": [
         { "name": "json", "type": "string" }
@@ -188,6 +195,12 @@
         { "name": "optionsStr", "type": "string" }
       ]
     },
+    "setSnapshotDropdownOptionsOnly": {
+      "description": "Set Snapshot dropdown options only without auto-filling rows",
+      "parameters": [
+        { "name": "optionsStr", "type": "string" }
+      ]
+    },
 
     "setManageGlAccountFilter": {
       "description": "Filter manage rows by selected GL Accounts",
@@ -209,6 +222,12 @@
     },
     "setManageSegmentFilter": {
       "description": "Filter manage rows by selected Segments",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageSnapshotFilter": {
+      "description": "Filter manage rows by selected Snapshots",
       "parameters": [
         { "name": "filterStr", "type": "string" }
       ]
