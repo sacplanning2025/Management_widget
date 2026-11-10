@@ -1106,24 +1106,27 @@
     }
 
     _getOptionText(tabName, fieldName, value, rowIndex) {
-      var options = this._getOptionsForField(tabName, fieldName, rowIndex);
-      var valueStr = String(value || "");
+  var options = this._getOptionsForField(tabName, fieldName, rowIndex);
+  var valueStr = String(value || "");
 
-      for (var i = 0; i < options.length; i++) {
-        if (String(options[i].key) === valueStr) {
-          return options[i].text;
-        }
-      }
-
-      var globalOptions = this._getGlobalOptionsForField(fieldName);
-      for (var j = 0; j < globalOptions.length; j++) {
-        if (String(globalOptions[j].key) === valueStr) {
-          return globalOptions[j].text;
-        }
-      }
-
-      return "";
+  for (var i = 0; i < options.length; i++) {
+    if (String(options[i].key) === valueStr) {
+      return options[i].text;
     }
+  }
+
+  var globalOptions = this._getGlobalOptionsForField(fieldName);
+  for (var j = 0; j < globalOptions.length; j++) {
+    if (String(globalOptions[j].key) === valueStr) {
+      return globalOptions[j].text;
+    }
+  }
+
+  // fallback: if saved value exists in dimension but not in current dropdown options,
+  // still display the raw saved value instead of "Select"
+  return valueStr;
+}
+
 
     _renderFieldErrors(fieldName, rowErrors) {
       var messages = [];
@@ -2660,44 +2663,29 @@
       this._refreshTable();
     }
 
-    setManageRowFieldOptions(rowIndex, fieldName, json) {
-      var index = parseInt(rowIndex, 10);
-      if (isNaN(index) || index < 0) {
-        return;
-      }
+   setManageRowFieldOptions(rowIndex, fieldName, json) {
+  var index = parseInt(rowIndex, 10);
+  if (isNaN(index) || index < 0) {
+    return;
+  }
 
-      var field = this._safeString(fieldName);
-      if (!field) {
-        return;
-      }
+  var field = this._safeString(fieldName);
+  if (!field) {
+    return;
+  }
 
-      var parsed = this._parseOptions(json);
-      this._setRowOptionsForField("manage", index, field, parsed);
+  var parsed = this._parseOptions(json);
+  this._setRowOptionsForField("manage", index, field, parsed);
 
-      if (this._manageRows[index]) {
-        var currentValue = this._safeString(this._manageRows[index][field]);
-        var keepValue = false;
+  // Important:
+  // Do not clear current manage value if it is not part of filtered dropdown options.
+  // Loaded dimension property values must remain visible and editable.
 
-        for (var i = 0; i < parsed.length; i++) {
-          if (String(parsed[i].key) === currentValue) {
-            keepValue = true;
-            break;
-          }
-        }
+  this._syncAll();
+  this._renderVisibleOnly();
+  this._refreshSummaryOnly();
+}
 
-        if (currentValue !== "" && keepValue === false) {
-          this._manageRows[index][field] = "";
-          if (field !== "ID") {
-            this._manageRows[index].isModified = true;
-            this._manageRows[index].rowStatus = "CHANGED";
-          }
-        }
-      }
-
-      this._syncAll();
-      this._renderVisibleOnly();
-      this._refreshSummaryOnly();
-    }
 
     setVisible(flag) {
       this.style.display = flag ? "block" : "none";
