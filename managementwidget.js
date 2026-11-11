@@ -83,6 +83,8 @@
       this._filterDropdownSearchTimer = null;
       this._filterDropdownListMoreEl = null;
 
+      this._pasteOverlayOpen = false;
+
       this._createColumns = [
         { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
         { key: "GLACCOUNT", label: "GLACCOUNT", type: "select", width: "180px" },
@@ -132,6 +134,7 @@
     disconnectedCallback() {
       this._closeDropdown();
       this._closeFilterDropdown();
+      this._closePasteOverlay();
 
       if (this._dropdownPanel && this._dropdownPanel.parentNode) {
         this._dropdownPanel.parentNode.removeChild(this._dropdownPanel);
@@ -616,6 +619,205 @@
       this._refreshSummaryOnly();
     }
 
+    _openPasteOverlay() {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      var existing = this._shadowRoot.getElementById("pasteOverlay");
+      if (existing) {
+        existing.style.display = "flex";
+        var existingTxt = this._shadowRoot.getElementById("pasteTextArea");
+        if (existingTxt) {
+          existingTxt.value = "";
+          existingTxt.focus();
+        }
+        this._pasteOverlayOpen = true;
+        return;
+      }
+
+      var overlay = document.createElement("div");
+      overlay.className = "pasteOverlay";
+      overlay.id = "pasteOverlay";
+
+      overlay.innerHTML =
+        '<div class="pasteDialog">' +
+          '<div class="pasteDialogHeader">' +
+            '<div class="pasteDialogTitle">Paste Rows from Excel</div>' +
+            '<button type="button" class="pasteDialogClose" id="btnClosePasteOverlay">×</button>' +
+          '</div>' +
+          '<div class="pasteDialogBody">' +
+            '<div class="pasteDialogHint">' +
+              'Paste tab-separated Excel rows in this exact order:<br>' +
+              '<strong>GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT</strong>' +
+            '</div>' +
+            '<textarea id="pasteTextArea" class="pasteTextArea" placeholder="Click here and press Ctrl+V"></textarea>' +
+          '</div>' +
+          '<div class="pasteDialogFooter">' +
+            '<button type="button" class="btn" id="btnCancelPasteOverlay">Cancel</button>' +
+            '<button type="button" class="btn primary" id="btnImportPasteOverlay">Import Pasted Rows</button>' +
+          '</div>' +
+        '</div>';
+
+      this._shadowRoot.appendChild(overlay);
+
+      var that = this;
+
+      var closeFn = function () {
+        that._closePasteOverlay();
+      };
+
+      var importFn = function () {
+        var txt = that._shadowRoot.getElementById("pasteTextArea");
+        if (!txt) {
+          return;
+        }
+        var pasted = txt.value || "";
+        that._pasteRowsFromClipboard(pasted);
+        that._closePasteOverlay();
+      };
+
+      var closeBtn = this._shadowRoot.getElementById("btnClosePasteOverlay");
+      var cancelBtn = this._shadowRoot.getElementById("btnCancelPasteOverlay");
+      var importBtn = this._shadowRoot.getElementById("btnImportPasteOverlay");
+      var textArea = this._shadowRoot.getElementById("pasteTextArea");
+
+      if (closeBtn) closeBtn.addEventListener("click", closeFn);
+      if (cancelBtn) cancelBtn.addEventListener("click", closeFn);
+      if (importBtn) importBtn.addEventListener("click", importFn);
+
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) {
+          that._closePasteOverlay();
+        }
+      });
+
+      if (textArea) {
+        textArea.focus();
+      }
+
+      this._pasteOverlayOpen = true;
+    }
+
+    _closePasteOverlay() {
+      var overlay = this._shadowRoot.getElementById("pasteOverlay");
+      if (overlay) {
+        overlay.parentNode.removeChild(overlay);
+      }
+      this._pasteOverlayOpen = false;
+    }
+
+    _pasteRowsFromClipboard(text) {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      var rawText = String(text || "");
+      if (rawText === "") {
+        return;
+      }
+
+      rawText = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      var lines = rawText.split("\n");
+      var addedCount = 0;
+      var i = 0;
+      var startIndex = 0;
+
+      if (lines.length > 0) {
+        var firstLineUpper = String(lines[0] || "").toUpperCase();
+        if (
+          firstLineUpper.indexOf("GLACCOUNT") > -1 &&
+          firstLineUpper.indexOf("COSTCENTER") > -1 &&
+          firstLineUpper.indexOf("PROFITCENTER") > -1
+        ) {
+          startIndex = 1;
+        }
+      }
+
+      for (i = startIndex; i < lines.length; i++) {
+        var line = String(lines[i] || "").trim();
+        if (line === "") {
+          continue;
+        }
+
+        var cols = line.split("\t");
+        if (!cols || cols.length < 1) {
+          continue;
+        }
+
+        var row = this._createEmptyRow("NEW");
+
+        row.GLACCOUNT = this._safeString(cols[0]);
+        row.COSTCENTER = this._safeString(cols[1]);
+        row.PROFITCENTER = this._safeString(cols[2]);
+        row.SEGMENT = this._safeString(cols[3]);
+        row.MANAGEMENT_SUB_MAPPING = this._safeString(cols[4]);
+        row.MANAGEMENT_MAPPING = this._safeString(cols[5]);
+        row.Hierarchy = this._safeString(cols[6]);
+        row.SNAPSHOT = this._safeString(cols[7]);
+
+        row.selected = false;
+        row.isModified = true;
+        row.rowStatus = "NEW";
+
+        if (
+          row.GLACCOUNT === "" &&
+          row.COSTCENTER === "" &&
+          row.PROFITCENTER === "" &&
+          row.SEGMENT === "" &&
+          row.MANAGEMENT_SUB_MAPPING === "" &&
+          row.MANAGEMENT_MAPPING === "" &&
+          row.Hierarchy === "" &&
+          row.SNAPSHOT === ""
+        ) {
+          continue;
+        }
+
+        this._updateRowId(row);
+        this._rows.push(row);
+        addedCount++;
+      }
+
+      if (addedCount > 0) {
+        if (
+          this._rows.length > 1 &&
+          this._rows[0] &&
+          this._rows[0].GLACCOUNT === "" &&
+          this._rows[0].COSTCENTER === "" &&
+          this._rows[0].PROFITCENTER === "" &&
+          this._rows[0].SEGMENT === "" &&
+          this._rows[0].MANAGEMENT_SUB_MAPPING === "" &&
+          this._rows[0].MANAGEMENT_MAPPING === "" &&
+          this._rows[0].Hierarchy === "" &&
+          this._rows[0].SNAPSHOT === ""
+        ) {
+          this._rows.splice(0, 1);
+        }
+
+        this._validationErrors = [];
+        this._validationResult = "true";
+        this._widgetStatus = "CHANGED";
+        this._lastEvent = JSON.stringify({
+          type: "pasteRows",
+          tab: "create",
+          addedCount: addedCount
+        });
+        this._syncAll();
+        this._refreshTable();
+        this._fireSimpleEvent("onDataChange", {
+          activeTab: this._activeTab,
+          rows: this._rows
+        });
+      }
+    }
+
+    getVisibleRowCount() {
+      if (this._activeTab !== "manage") {
+        return this._rows.length;
+      }
+      return this._filteredManageIndexes.length;
+    }
+
     _render() {
       this._shadowRoot.innerHTML = `
         <style>
@@ -738,14 +940,92 @@
             color:#223548;
           }
 
-          .pasteTextarea {
-            position:absolute !important;
-            left:-9999px !important;
-            top:-9999px !important;
-            width:1px !important;
-            height:1px !important;
-            opacity:0 !important;
-            pointer-events:none !important;
+          .pasteOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(34,53,72,0.35);
+            z-index: 1000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+          }
+
+          .pasteDialog {
+            width: 760px;
+            max-width: 100%;
+            background: #ffffff;
+            border-radius: 14px;
+            box-shadow: 0 20px 50px rgba(34,53,72,0.25);
+            border: 1px solid #dbe5f0;
+            overflow: hidden;
+          }
+
+          .pasteDialogHeader {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid #e6edf5;
+            background: #f8fbff;
+          }
+
+          .pasteDialogTitle {
+            font-size: 15px;
+            font-weight: 700;
+            color: #223548;
+          }
+
+          .pasteDialogClose {
+            border: 1px solid #c7d7ea;
+            background: #ffffff;
+            color: #5f6f82;
+            border-radius: 8px;
+            width: 34px;
+            height: 34px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+          }
+
+          .pasteDialogBody {
+            padding: 16px;
+          }
+
+          .pasteDialogHint {
+            font-size: 12px;
+            color: #5d7288;
+            margin-bottom: 10px;
+            line-height: 1.45;
+          }
+
+          .pasteTextArea {
+            width: 100%;
+            min-height: 220px;
+            resize: vertical;
+            border: 1px solid #c7d7ea;
+            border-radius: 10px;
+            padding: 12px;
+            box-sizing: border-box;
+            font-size: 13px;
+            font-family: Arial, sans-serif;
+            color: #223548;
+            outline: none;
+          }
+
+          .pasteTextArea:focus {
+            border-color: #0a6ed1;
+            box-shadow: 0 0 0 2px rgba(10,110,209,0.12);
+          }
+
+          .pasteDialogFooter {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 14px 16px;
+            border-top: 1px solid #e6edf5;
+            background: #fbfdff;
           }
 
           .gridWrap { overflow:auto; max-height:520px; background:#ffffff; }
@@ -818,320 +1098,6 @@
         </style>
         <div class="wrap" id="widgetWrap"></div>
       `;
-    }
-
-    _getActiveRows() {
-      return this._activeTab === "manage" ? this._manageRows : this._rows;
-    }
-
-    _hasSelectedRows(tabName) {
-      var rows = this._getRowsByTab(tabName);
-      if (tabName !== "manage") {
-        for (var i = 0; i < rows.length; i++) {
-          if (rows[i].selected === true) { return true; }
-        }
-        return false;
-      }
-
-      var visibleIndexes = this._getManagePagedIndexes();
-      for (var j = 0; j < visibleIndexes.length; j++) {
-        if (rows[visibleIndexes[j]].selected === true) { return true; }
-      }
-      return false;
-    }
-
-    _areAllRowsSelected(tabName) {
-      var rows = this._getRowsByTab(tabName);
-
-      if (!rows || rows.length === 0) {
-        return false;
-      }
-
-      if (tabName !== "manage") {
-        for (var i = 0; i < rows.length; i++) {
-          if (rows[i].selected !== true) {
-            return false;
-          }
-        }
-        return rows.length > 0;
-      }
-
-      var visibleIndexes = this._getManagePagedIndexes();
-      if (!visibleIndexes.length) { return false; }
-
-      for (var j = 0; j < visibleIndexes.length; j++) {
-        if (rows[visibleIndexes[j]].selected !== true) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    _toggleSelectAll(tabName, checked) {
-      var rows = this._getRowsByTab(tabName);
-
-      if (tabName !== "manage") {
-        for (var i = 0; i < rows.length; i++) {
-          rows[i].selected = checked;
-        }
-      } else {
-        var visibleIndexes = this._getManagePagedIndexes();
-        for (var j = 0; j < visibleIndexes.length; j++) {
-          rows[visibleIndexes[j]].selected = checked;
-          rows[visibleIndexes[j]].isModified = true;
-          rows[visibleIndexes[j]].rowStatus = "CHANGED";
-        }
-      }
-
-      this._validationErrors = [];
-      this._validationResult = "true";
-      this._lastEvent = JSON.stringify({
-        type: tabName === "manage" ? "manageSelectAll" : "selectAll",
-        selected: checked
-      });
-      this._widgetStatus = "CHANGED";
-      this._syncAll();
-      this._refreshToolbarButtons();
-      this._renderVisibleOnly();
-      this._refreshSummaryOnly();
-      this._fireSimpleEvent("onDataChange", {
-        activeTab: this._activeTab,
-        rows: this._rows,
-        manageRows: this._manageRows
-      });
-    }
-
-    _refreshStatusBarHtml() {
-      return `
-        <div class="summary" id="summaryBar">
-          <div>Active Tab: ${this._activeTab}</div>
-          <div>Total Rows: ${this.getVisibleRowCount()}</div>
-          <div>Selected Rows: ${this.getSelectedRowCount()}</div>
-          <div>Validation: ${this._validationResult}</div>
-          <div>Status: ${this._widgetStatus}</div>
-        </div>
-      `;
-    }
-
-    _refreshSummaryOnly() {
-      var summaryHost = this._shadowRoot.getElementById("summaryBar");
-      if (summaryHost) {
-        summaryHost.outerHTML = this._refreshStatusBarHtml();
-      }
-
-      var visibleText = this._shadowRoot.getElementById("visibleCountText");
-      if (visibleText) {
-        visibleText.textContent = "Visible: " + this.getVisibleRowCount();
-      }
-
-      var pageInfo = this._shadowRoot.getElementById("pageInfo");
-      if (pageInfo) {
-        pageInfo.textContent = "Page " + this._getManageCurrentPage() + " of " + this._getManageTotalPages();
-      }
-
-      var loadMoreInfo = this._shadowRoot.getElementById("loadMoreInfo");
-      if (loadMoreInfo) {
-        var total = this.getVisibleRowCount();
-        var start = total === 0 ? 0 : ((this._getManageCurrentPage() - 1) * this._managePageSize) + 1;
-        var end = Math.min(this._getManageCurrentPage() * this._managePageSize, total);
-        loadMoreInfo.textContent = "Showing " + start + " to " + end + " of " + total;
-      }
-    }
-
-    _isManageRowVisible(rowData) {
-      if (!rowData) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageGlAccountFilter, this._manageGlAccountFilterMap, rowData.GLACCOUNT)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageCostCenterFilter, this._manageCostCenterFilterMap, rowData.COSTCENTER)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageProfitCenterFilter, this._manageProfitCenterFilterMap, rowData.PROFITCENTER)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageSegmentFilter, this._manageSegmentFilterMap, rowData.SEGMENT)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageSnapshotFilter, this._manageSnapshotFilterMap, rowData.SNAPSHOT)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageHierarchyFilter, this._manageHierarchyFilterMap, rowData.Hierarchy)) {
-        return false;
-      }
-
-      if (this._manageIdSearch && this._manageIdSearch !== "") {
-        var rowIdText = this._safeString(rowData.ID).toLowerCase();
-        var searchText = this._safeString(this._manageIdSearch).toLowerCase();
-
-        if (rowIdText.indexOf(searchText) === -1) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    _rebuildManageFilteredIndexes() {
-      this._filteredManageIndexes = [];
-      for (var i = 0; i < this._manageRows.length; i++) {
-        if (this._isManageRowVisible(this._manageRows[i])) {
-          this._filteredManageIndexes.push(i);
-        }
-      }
-
-      var totalPages = this._getManageTotalPages();
-      if (this._manageCurrentPage > totalPages) {
-        this._manageCurrentPage = totalPages;
-      }
-      if (this._manageCurrentPage < 1) {
-        this._manageCurrentPage = 1;
-      }
-    }
-
-    _getManageTotalPages() {
-      if (this._filteredManageIndexes.length === 0) { return 1; }
-      return Math.ceil(this._filteredManageIndexes.length / this._managePageSize);
-    }
-
-    _getManagePagedIndexes() {
-      var start = (this._manageCurrentPage - 1) * this._managePageSize;
-      var end = start + this._managePageSize;
-      return this._filteredManageIndexes.slice(start, end);
-    }
-
-    _getManageCurrentPage() {
-      if (this._activeTab !== "manage") { return 1; }
-      return this._manageCurrentPage;
-    }
-
-    _goToPreviousPage() {
-      if (this._activeTab !== "manage") { return; }
-      if (this._manageCurrentPage > 1) {
-        this._manageCurrentPage--;
-        this._renderVisibleOnly();
-        this._refreshSummaryOnly();
-      }
-    }
-
-    _goToNextPage() {
-      if (this._activeTab !== "manage") { return; }
-      if (this._manageCurrentPage < this._getManageTotalPages()) {
-        this._manageCurrentPage++;
-        this._renderVisibleOnly();
-        this._refreshSummaryOnly();
-      }
-    }
-
-    _pasteRowsFromClipboard(text) {
-      if (this._activeTab !== "create") {
-        return;
-      }
-
-      var rawText = String(text || "");
-      if (!rawText) {
-        return;
-      }
-
-      rawText = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-      var lines = rawText.split("\n");
-      var addedCount = 0;
-      var i = 0;
-
-      for (i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (line === undefined || line === null) {
-          continue;
-        }
-
-        line = String(line).trim();
-        if (line === "") {
-          continue;
-        }
-
-        var cols = line.split("\t");
-        if (!cols || cols.length === 0) {
-          continue;
-        }
-
-        var row = this._createEmptyRow("NEW");
-
-        row.GLACCOUNT = this._safeString(cols[0]);
-        row.COSTCENTER = this._safeString(cols[1]);
-        row.PROFITCENTER = this._safeString(cols[2]);
-        row.SEGMENT = this._safeString(cols[3]);
-        row.MANAGEMENT_SUB_MAPPING = this._safeString(cols[4]);
-        row.MANAGEMENT_MAPPING = this._safeString(cols[5]);
-        row.Hierarchy = this._safeString(cols[6]);
-        row.SNAPSHOT = this._safeString(cols[7]);
-        row.selected = false;
-        row.isModified = true;
-        row.rowStatus = "NEW";
-
-        if (
-          row.GLACCOUNT === "" &&
-          row.COSTCENTER === "" &&
-          row.PROFITCENTER === "" &&
-          row.SEGMENT === "" &&
-          row.MANAGEMENT_SUB_MAPPING === "" &&
-          row.MANAGEMENT_MAPPING === "" &&
-          row.Hierarchy === "" &&
-          row.SNAPSHOT === ""
-        ) {
-          continue;
-        }
-
-        this._updateRowId(row);
-        this._rows.push(row);
-        addedCount++;
-      }
-
-      if (addedCount > 0) {
-        if (
-          this._rows.length > 1 &&
-          this._rows[0] &&
-          this._rows[0].GLACCOUNT === "" &&
-          this._rows[0].COSTCENTER === "" &&
-          this._rows[0].PROFITCENTER === "" &&
-          this._rows[0].SEGMENT === "" &&
-          this._rows[0].MANAGEMENT_SUB_MAPPING === "" &&
-          this._rows[0].MANAGEMENT_MAPPING === "" &&
-          this._rows[0].Hierarchy === "" &&
-          this._rows[0].SNAPSHOT === ""
-        ) {
-          this._rows.splice(0, 1);
-        }
-
-        this._validationErrors = [];
-        this._validationResult = "true";
-        this._widgetStatus = "CHANGED";
-        this._lastEvent = JSON.stringify({
-          type: "pasteRows",
-          tab: "create",
-          addedCount: addedCount
-        });
-        this._syncAll();
-        this._refreshTable();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          rows: this._rows
-        });
-      }
-    }
-
-    getVisibleRowCount() {
-      if (this._activeTab !== "manage") {
-        return this._rows.length;
-      }
-      return this._filteredManageIndexes.length;
     }
 
     _renderVisibleOnly() {
@@ -1305,14 +1271,14 @@
 
       if (this._activeTab === "create") {
         html += '<div class="pasteBanner">';
-        html += '<div class="pasteHint"><strong>Excel Paste Ready:</strong> Copy rows in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click <strong>Paste from Excel</strong> and paste.</div>';
-        html += '<textarea id="pasteCaptureArea" class="pasteTextarea"></textarea>';
+        html += '<div class="pasteHint"><strong>Excel Paste Ready:</strong> Copy rows in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click <strong>Paste from Excel</strong>.</div>';
         html += '</div>';
       }
 
       if (this._activeTab === "manage") {
         html += '<div class="manageTopbar">';
         html += '<div class="manageFilters">';
+
         html += '<div class="filterCard">';
         html += '<div class="filterCardLabel">SEGMENT</div>';
         html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSegment" data-filter-field="SEGMENT">';
@@ -1330,6 +1296,7 @@
         html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSnapshot" data-filter-field="SNAPSHOT">';
         html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SNAPSHOT") || "All") + '</span><span class="arrow">▼</span></div>';
         html += '</div>';
+
         html += '</div>';
 
         html += '<div class="pager">';
@@ -2126,45 +2093,9 @@
         var btnPasteExcel = this._shadowRoot.getElementById("btnPasteExcel");
         if (btnPasteExcel) {
           btnPasteExcel.addEventListener("click", function () {
-            var area = that._shadowRoot.getElementById("pasteCaptureArea");
-            if (area) {
-              area.value = "";
-              area.focus();
-            }
+            that._openPasteOverlay();
           });
         }
-
-        var pasteCaptureArea = this._shadowRoot.getElementById("pasteCaptureArea");
-        if (pasteCaptureArea) {
-          pasteCaptureArea.addEventListener("paste", function (e) {
-            var text = "";
-            if (e.clipboardData && e.clipboardData.getData) {
-              text = e.clipboardData.getData("text/plain");
-            }
-            if (text !== "") {
-              e.preventDefault();
-              that._pasteRowsFromClipboard(text);
-            }
-          });
-        }
-
-        this._shadowRoot.addEventListener("paste", function (e) {
-          if (that._activeTab !== "create") {
-            return;
-          }
-
-          var activeEl = that._shadowRoot.activeElement;
-          var text = "";
-
-          if (e.clipboardData && e.clipboardData.getData) {
-            text = e.clipboardData.getData("text/plain");
-          }
-
-          if (text !== "" && activeEl && activeEl.id === "pasteCaptureArea") {
-            e.preventDefault();
-            that._pasteRowsFromClipboard(text);
-          }
-        });
 
         var btnValidate = this._shadowRoot.getElementById("btnValidate");
         if (btnValidate) btnValidate.addEventListener("click", function () { that.validate(); });
