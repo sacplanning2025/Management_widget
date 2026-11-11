@@ -83,7 +83,8 @@
       this._filterDropdownSearchTimer = null;
       this._filterDropdownListMoreEl = null;
 
-      this._pasteOverlayOpen = false;
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
 
       this._createColumns = [
         { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
@@ -134,7 +135,6 @@
     disconnectedCallback() {
       this._closeDropdown();
       this._closeFilterDropdown();
-      this._closePasteOverlay();
 
       if (this._dropdownPanel && this._dropdownPanel.parentNode) {
         this._dropdownPanel.parentNode.removeChild(this._dropdownPanel);
@@ -459,89 +459,571 @@
       bucket[rowIndex][fieldName] = this._cloneOptions(options || []);
     }
 
-    _rebuildRowOptionsAfterRowChange(tabName, oldRows, newRows) {
-      var oldMap = {};
-      var newMap = {};
-      var rebuilt = {};
+    _cleanupRowOptions(tabName) {
+      var rows = this._getRowsByTab(tabName);
       var bucket = this._getRowOptionsBucketByTab(tabName);
+      var cleaned = {};
+      for (var i = 0; i < rows.length; i++) {
+        if (bucket[i]) {
+          cleaned[i] = bucket[i];
+        }
+      }
+      this._setRowOptionsBucketByTab(tabName, cleaned);
+    }
+
+    _rebuildRowOptionsAfterRowChange(tabName, oldRows, newRows) {
+      var oldBucket = this._getRowOptionsBucketByTab(tabName);
+      var newBucket = {};
+      var rowIdToOptions = {};
       var i = 0;
 
       for (i = 0; i < oldRows.length; i++) {
-        if (oldRows[i] && oldRows[i].rowId) {
-          oldMap[oldRows[i].rowId] = i;
+        if (oldRows[i] && oldRows[i].rowId && oldBucket[i]) {
+          rowIdToOptions[oldRows[i].rowId] = oldBucket[i];
         }
       }
 
       for (i = 0; i < newRows.length; i++) {
-        if (newRows[i] && newRows[i].rowId) {
-          newMap[newRows[i].rowId] = i;
+        if (newRows[i] && newRows[i].rowId && rowIdToOptions[newRows[i].rowId]) {
+          newBucket[i] = rowIdToOptions[newRows[i].rowId];
         }
       }
 
-      for (var rowId in newMap) {
-        if (oldMap[rowId] !== undefined && bucket[oldMap[rowId]]) {
-          rebuilt[newMap[rowId]] = this._cloneRowFieldOptions(bucket[oldMap[rowId]]);
-        }
-      }
-
-      this._setRowOptionsBucketByTab(tabName, rebuilt);
+      this._setRowOptionsBucketByTab(tabName, newBucket);
     }
 
-    _cloneRowFieldOptions(rowFieldOptions) {
-      var result = {};
-      if (!rowFieldOptions) {
-        return result;
-      }
-
-      for (var fieldName in rowFieldOptions) {
-        result[fieldName] = this._cloneOptions(rowFieldOptions[fieldName] || []);
-      }
-
-      return result;
+    _syncAll() {
+      this.setAttribute("lastEvent", this._lastEvent || "");
+      this.setAttribute("validationResult", this._validationResult || "false");
+      this.setAttribute("validationErrors", JSON.stringify(this._validationErrors || []));
+      this.setAttribute("savePayload", JSON.stringify(this._savePayload || []));
+      this.setAttribute("rowCount", String(this.getRowCount()));
+      this.setAttribute("selectedRowCount", String(this.getSelectedRowCount()));
+      this.setAttribute("widgetStatus", this._widgetStatus || "");
+      this.setAttribute("rows", JSON.stringify(this._rows || []));
+      this.setAttribute("managedata", JSON.stringify(this._manageRows || []));
+      this.setAttribute("activetab", this._activeTab || "create");
     }
 
-    _cleanupRowOptions(tabName) {
-      var rebuilt = {};
+    _fireSimpleEvent(name, detail) {
+      this.dispatchEvent(new CustomEvent(name, {
+        detail: detail || {},
+        bubbles: true,
+        composed: true
+      }));
+    }
+
+    _getActiveRows() {
+      return this._activeTab === "manage" ? this._manageRows : this._rows;
+    }
+
+    _hasSelectedRows(tabName) {
       var rows = this._getRowsByTab(tabName);
-      var bucket = this._getRowOptionsBucketByTab(tabName);
-
-      for (var i = 0; i < rows.length; i++) {
-        if (bucket[i]) {
-          rebuilt[i] = this._cloneRowFieldOptions(bucket[i]);
+      if (tabName !== "manage") {
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].selected === true) {
+            return true;
+          }
         }
+        return false;
       }
 
-      this._setRowOptionsBucketByTab(tabName, rebuilt);
+      var visibleIndexes = this._getManagePagedIndexes();
+      for (var j = 0; j < visibleIndexes.length; j++) {
+        if (rows[visibleIndexes[j]] && rows[visibleIndexes[j]].selected === true) {
+          return true;
+        }
+      }
+      return false;
     }
 
-    _buildFilterMap(filterArray) {
-      var map = {};
-      if (!filterArray || !filterArray.length) {
-        return map;
+    _areAllRowsSelected(tabName) {
+      var rows = this._getRowsByTab(tabName);
+      if (!rows || rows.length === 0) {
+        return false;
       }
 
-      for (var i = 0; i < filterArray.length; i++) {
-        var val = this._safeString(filterArray[i]);
-        if (val !== "") {
-          map[val] = true;
+      if (tabName !== "manage") {
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].selected !== true) {
+            return false;
+          }
+        }
+        return rows.length > 0;
+      }
+
+      var visibleIndexes = this._getManagePagedIndexes();
+      if (visibleIndexes.length === 0) {
+        return false;
+      }
+
+      for (var j = 0; j < visibleIndexes.length; j++) {
+        if (rows[visibleIndexes[j]].selected !== true) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    _toggleSelectAll(tabName, checked) {
+      var rows = this._getRowsByTab(tabName);
+
+      if (tabName !== "manage") {
+        for (var i = 0; i < rows.length; i++) {
+          rows[i].selected = checked;
+        }
+      } else {
+        var visibleIndexes = this._getManagePagedIndexes();
+        for (var j = 0; j < visibleIndexes.length; j++) {
+          rows[visibleIndexes[j]].selected = checked;
+          rows[visibleIndexes[j]].isModified = true;
+          rows[visibleIndexes[j]].rowStatus = "CHANGED";
         }
       }
 
-      return map;
+      this._validationErrors = [];
+      this._validationResult = "true";
+      this._lastEvent = JSON.stringify({
+        type: tabName === "manage" ? "manageSelectAll" : "selectAll",
+        selected: checked
+      });
+      this._widgetStatus = "CHANGED";
+      this._syncAll();
+      this._refreshToolbarButtons();
+      this._renderVisibleOnly();
+      this._refreshSummaryOnly();
+      this._fireSimpleEvent("onDataChange", {
+        activeTab: this._activeTab,
+        rows: this._rows,
+        manageRows: this._manageRows
+      });
+    }
+
+    _refreshStatusBarHtml() {
+      return `
+        <div class="summary" id="summaryBar">
+          <div>Active Tab: ${this._activeTab}</div>
+          <div>Total Rows: ${this.getVisibleRowCount()}</div>
+          <div>Selected Rows: ${this.getSelectedRowCount()}</div>
+          <div>Validation: ${this._validationResult}</div>
+          <div>Status: ${this._widgetStatus}</div>
+        </div>
+      `;
+    }
+
+    _refreshSummaryOnly() {
+      var summaryHost = this._shadowRoot.getElementById("summaryBar");
+      if (summaryHost) {
+        summaryHost.outerHTML = this._refreshStatusBarHtml();
+      }
+
+      var visibleText = this._shadowRoot.getElementById("visibleCountText");
+      if (visibleText) {
+        visibleText.textContent = "Visible: " + this.getVisibleRowCount();
+      }
+
+      var pageInfo = this._shadowRoot.getElementById("pageInfo");
+      if (pageInfo) {
+        pageInfo.textContent = "Page " + this._getManageCurrentPage() + " of " + this._getManageTotalPages();
+      }
+
+      var loadMoreInfo = this._shadowRoot.getElementById("loadMoreInfo");
+      if (loadMoreInfo) {
+        var total = this.getVisibleRowCount();
+        var start = total === 0 ? 0 : ((this._getManageCurrentPage() - 1) * this._managePageSize) + 1;
+        var end = Math.min(this._getManageCurrentPage() * this._managePageSize, total);
+        loadMoreInfo.textContent = "Showing " + start + " to " + end + " of " + total;
+      }
     }
 
     _isValueInFilterMap(filterArray, filterMap, value) {
       if (!filterArray || filterArray.length === 0) {
         return true;
       }
-
       var cleanValue = this._safeString(value);
       return filterMap[cleanValue] === true;
     }
 
+    _buildFilterMap(filterArray) {
+      var map = {};
+      for (var i = 0; i < filterArray.length; i++) {
+        map[this._safeString(filterArray[i])] = true;
+      }
+      return map;
+    }
+
+    _isManageRowVisible(rowData) {
+      if (!rowData) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageGlAccountFilter, this._manageGlAccountFilterMap, rowData.GLACCOUNT)) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageCostCenterFilter, this._manageCostCenterFilterMap, rowData.COSTCENTER)) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageProfitCenterFilter, this._manageProfitCenterFilterMap, rowData.PROFITCENTER)) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageSegmentFilter, this._manageSegmentFilterMap, rowData.SEGMENT)) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageSnapshotFilter, this._manageSnapshotFilterMap, rowData.SNAPSHOT)) {
+        return false;
+      }
+
+      if (!this._isValueInFilterMap(this._manageHierarchyFilter, this._manageHierarchyFilterMap, rowData.Hierarchy)) {
+        return false;
+      }
+
+      if (this._manageIdSearch && this._manageIdSearch !== "") {
+        var rowIdText = this._safeString(rowData.ID).toLowerCase();
+        var searchText = this._safeString(this._manageIdSearch).toLowerCase();
+
+        if (rowIdText.indexOf(searchText) === -1) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    _rebuildManageFilteredIndexes() {
+      this._filteredManageIndexes = [];
+      for (var i = 0; i < this._manageRows.length; i++) {
+        if (this._isManageRowVisible(this._manageRows[i])) {
+          this._filteredManageIndexes.push(i);
+        }
+      }
+
+      var totalPages = this._getManageTotalPages();
+      if (this._manageCurrentPage > totalPages) {
+        this._manageCurrentPage = totalPages;
+      }
+      if (this._manageCurrentPage < 1) {
+        this._manageCurrentPage = 1;
+      }
+    }
+
+    _getManageTotalPages() {
+      if (this._filteredManageIndexes.length === 0) {
+        return 1;
+      }
+      return Math.ceil(this._filteredManageIndexes.length / this._managePageSize);
+    }
+
+    _getManagePagedIndexes() {
+      var start = (this._manageCurrentPage - 1) * this._managePageSize;
+      var end = start + this._managePageSize;
+      return this._filteredManageIndexes.slice(start, end);
+    }
+
+    _getManageCurrentPage() {
+      if (this._activeTab !== "manage") {
+        return 1;
+      }
+      return this._manageCurrentPage;
+    }
+
+    _goToPreviousPage() {
+      if (this._activeTab !== "manage") {
+        return;
+      }
+      if (this._manageCurrentPage > 1) {
+        this._manageCurrentPage--;
+        this._renderVisibleOnly();
+        this._refreshSummaryOnly();
+      }
+    }
+
+    _goToNextPage() {
+      if (this._activeTab !== "manage") {
+        return;
+      }
+      if (this._manageCurrentPage < this._getManageTotalPages()) {
+        this._manageCurrentPage++;
+        this._renderVisibleOnly();
+        this._refreshSummaryOnly();
+      }
+    }
+
+    _openPastePanel() {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      this._pastePanelOpen = true;
+      this._pasteBuffer = "";
+      this._refreshTable();
+
+      var that = this;
+      setTimeout(function () {
+        var area = that._shadowRoot.getElementById("pastePanelInput");
+        if (area) {
+          area.focus();
+        }
+      }, 0);
+    }
+
+    _closePastePanel() {
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
+      this._refreshTable();
+    }
+
+    _importPastePanelRows() {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      var area = this._shadowRoot.getElementById("pastePanelInput");
+      var text = area ? area.value : this._pasteBuffer;
+
+      if (!text || String(text).trim() === "") {
+        return;
+      }
+
+      this._pasteRowsFromClipboard(text);
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
+      this._refreshTable();
+    }
+
+    _pasteRowsFromClipboard(text) {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      var rawText = String(text || "");
+      if (!rawText) {
+        return;
+      }
+
+      rawText = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      var lines = rawText.split("\n");
+      var addedCount = 0;
+      var i = 0;
+
+      for (i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line === undefined || line === null) {
+          continue;
+        }
+
+        line = String(line).trim();
+        if (line === "") {
+          continue;
+        }
+
+        var cols = line.split("\t");
+        if (!cols || cols.length === 0) {
+          continue;
+        }
+
+        var row = this._createEmptyRow("NEW");
+
+        row.GLACCOUNT = this._safeString(cols[0]);
+        row.COSTCENTER = this._safeString(cols[1]);
+        row.PROFITCENTER = this._safeString(cols[2]);
+        row.SEGMENT = this._safeString(cols[3]);
+        row.MANAGEMENT_SUB_MAPPING = this._safeString(cols[4]);
+        row.MANAGEMENT_MAPPING = this._safeString(cols[5]);
+        row.Hierarchy = this._safeString(cols[6]);
+        row.SNAPSHOT = this._safeString(cols[7]);
+        row.selected = false;
+        row.isModified = true;
+        row.rowStatus = "NEW";
+
+        if (
+          row.GLACCOUNT === "" &&
+          row.COSTCENTER === "" &&
+          row.PROFITCENTER === "" &&
+          row.SEGMENT === "" &&
+          row.MANAGEMENT_SUB_MAPPING === "" &&
+          row.MANAGEMENT_MAPPING === "" &&
+          row.Hierarchy === "" &&
+          row.SNAPSHOT === ""
+        ) {
+          continue;
+        }
+
+        this._updateRowId(row);
+        this._rows.push(row);
+        addedCount++;
+      }
+
+      if (addedCount > 0) {
+        if (
+          this._rows.length > 1 &&
+          this._rows[0] &&
+          this._rows[0].GLACCOUNT === "" &&
+          this._rows[0].COSTCENTER === "" &&
+          this._rows[0].PROFITCENTER === "" &&
+          this._rows[0].SEGMENT === "" &&
+          this._rows[0].MANAGEMENT_SUB_MAPPING === "" &&
+          this._rows[0].MANAGEMENT_MAPPING === "" &&
+          this._rows[0].Hierarchy === "" &&
+          this._rows[0].SNAPSHOT === ""
+        ) {
+          this._rows.splice(0, 1);
+        }
+
+        this._validationErrors = [];
+        this._validationResult = "true";
+        this._widgetStatus = "CHANGED";
+        this._lastEvent = JSON.stringify({
+          type: "pasteRows",
+          tab: "create",
+          addedCount: addedCount
+        });
+        this._syncAll();
+        this._refreshTable();
+        this._fireSimpleEvent("onDataChange", {
+          activeTab: this._activeTab,
+          rows: this._rows
+        });
+      }
+    }
+
+    getVisibleRowCount() {
+      if (this._activeTab !== "manage") {
+        return this._rows.length;
+      }
+      return this._filteredManageIndexes.length;
+    }
+
+    _renderVisibleOnly() {
+      var tbody = this._shadowRoot.getElementById("tbodyVirtual");
+      if (!tbody) {
+        return;
+      }
+
+      var rowErrorMap = this._getRowErrorMap();
+      var html = "";
+      var i = 0;
+      var j = 0;
+      var activeColumns = this._activeTab === "manage" ? this._manageColumns : this._createColumns;
+      var visibleIndexes = this._activeTab === "manage"
+        ? this._getManagePagedIndexes()
+        : (function (length) {
+            var arr = [];
+            for (var k = 0; k < length; k++) {
+              arr.push(k);
+            }
+            return arr;
+          }.call(this, this._rows.length));
+
+      if (visibleIndexes.length === 0) {
+        var colCount = activeColumns.length;
+        html = '<tr><td colspan="' + colCount + '" class="empty-msg">No data to display.</td></tr>';
+        tbody.innerHTML = html;
+        this._refreshSummaryOnly();
+        return;
+      }
+
+      for (i = 0; i < visibleIndexes.length; i++) {
+        var actualIndex = visibleIndexes[i];
+        var sourceRows = this._activeTab === "manage" ? this._manageRows : this._rows;
+        var row = sourceRows[actualIndex];
+        var rowErrors = rowErrorMap[actualIndex] || [];
+        var rowClass = "";
+
+        if (rowErrors.length) {
+          rowClass = "errorRow";
+        } else if (row.isModified === true) {
+          rowClass = "modifiedRow";
+        }
+
+        html += '<tr class="' + rowClass + '">';
+
+        for (j = 0; j < activeColumns.length; j++) {
+          html += '<td style="width:' + activeColumns[j].width + '">'
+            + this._renderCell(this._activeTab, row, actualIndex, activeColumns[j], rowErrors)
+            + "</td>";
+        }
+
+        html += "</tr>";
+      }
+
+      tbody.innerHTML = html;
+      this._bindCellEvents();
+
+      var selectAll = this._shadowRoot.getElementById(this._activeTab === "manage" ? "selectAllManage" : "selectAllCreate");
+      if (selectAll) {
+        selectAll.checked = this._areAllRowsSelected(this._activeTab);
+      }
+
+      this._refreshSummaryOnly();
+    }
+
+    _refreshToolbarButtons() {
+      var hasSelection = this._hasSelectedRows(this._activeTab);
+      var toolbarRight = this._shadowRoot.getElementById("toolbarRight");
+      if (!toolbarRight) {
+        return;
+      }
+
+      if (this._activeTab === "create") {
+        var existingDeleteCreate = this._shadowRoot.getElementById("btnDelete");
+        if (hasSelection && !existingDeleteCreate) {
+          var newDeleteBtnCreate = document.createElement("button");
+          newDeleteBtnCreate.className = "btn danger";
+          newDeleteBtnCreate.id = "btnDelete";
+          newDeleteBtnCreate.textContent = "Delete Selected";
+          newDeleteBtnCreate.addEventListener("click", this.deleteSelectedRows.bind(this));
+          var btnValidate = this._shadowRoot.getElementById("btnValidate");
+          if (btnValidate) {
+            toolbarRight.insertBefore(newDeleteBtnCreate, btnValidate);
+          } else {
+            toolbarRight.appendChild(newDeleteBtnCreate);
+          }
+        } else if (!hasSelection && existingDeleteCreate) {
+          existingDeleteCreate.parentNode.removeChild(existingDeleteCreate);
+        }
+
+        var existingCopyCreate = this._shadowRoot.getElementById("btnCopy");
+        if (hasSelection && !existingCopyCreate) {
+          var newCopyBtnCreate = document.createElement("button");
+          newCopyBtnCreate.className = "btn";
+          newCopyBtnCreate.id = "btnCopy";
+          newCopyBtnCreate.textContent = "Copy";
+          newCopyBtnCreate.addEventListener("click", this.copySelectedRows.bind(this));
+          var btnDeleteRef = this._shadowRoot.getElementById("btnDelete") || this._shadowRoot.getElementById("btnValidate");
+          if (btnDeleteRef) {
+            toolbarRight.insertBefore(newCopyBtnCreate, btnDeleteRef);
+          } else {
+            toolbarRight.appendChild(newCopyBtnCreate);
+          }
+        } else if (!hasSelection && existingCopyCreate) {
+          existingCopyCreate.parentNode.removeChild(existingCopyCreate);
+        }
+      } else {
+        var existingDeleteManage = this._shadowRoot.getElementById("btnDeleteManage");
+        if (hasSelection && !existingDeleteManage) {
+          var newDeleteBtnManage = document.createElement("button");
+          newDeleteBtnManage.className = "btn danger";
+          newDeleteBtnManage.id = "btnDeleteManage";
+          newDeleteBtnManage.textContent = "Delete Selected";
+          newDeleteBtnManage.addEventListener("click", this.deleteManageData.bind(this));
+          var btnClearManage = this._shadowRoot.getElementById("btnClearManage");
+          if (btnClearManage) {
+            toolbarRight.insertBefore(newDeleteBtnManage, btnClearManage);
+          } else {
+            toolbarRight.appendChild(newDeleteBtnManage);
+          }
+        } else if (!hasSelection && existingDeleteManage) {
+          existingDeleteManage.parentNode.removeChild(existingDeleteManage);
+        }
+      }
+    }
+
     _updateRowId(row) {
       var parts = [];
-
       if (row.GLACCOUNT) parts.push(row.GLACCOUNT);
       if (row.COSTCENTER) parts.push(row.COSTCENTER);
       if (row.PROFITCENTER) parts.push(row.PROFITCENTER);
@@ -619,205 +1101,6 @@
       this._refreshSummaryOnly();
     }
 
-    _openPasteOverlay() {
-      if (this._activeTab !== "create") {
-        return;
-      }
-
-      var existing = this._shadowRoot.getElementById("pasteOverlay");
-      if (existing) {
-        existing.style.display = "flex";
-        var existingTxt = this._shadowRoot.getElementById("pasteTextArea");
-        if (existingTxt) {
-          existingTxt.value = "";
-          existingTxt.focus();
-        }
-        this._pasteOverlayOpen = true;
-        return;
-      }
-
-      var overlay = document.createElement("div");
-      overlay.className = "pasteOverlay";
-      overlay.id = "pasteOverlay";
-
-      overlay.innerHTML =
-        '<div class="pasteDialog">' +
-          '<div class="pasteDialogHeader">' +
-            '<div class="pasteDialogTitle">Paste Rows from Excel</div>' +
-            '<button type="button" class="pasteDialogClose" id="btnClosePasteOverlay">×</button>' +
-          '</div>' +
-          '<div class="pasteDialogBody">' +
-            '<div class="pasteDialogHint">' +
-              'Paste tab-separated Excel rows in this exact order:<br>' +
-              '<strong>GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT</strong>' +
-            '</div>' +
-            '<textarea id="pasteTextArea" class="pasteTextArea" placeholder="Click here and press Ctrl+V"></textarea>' +
-          '</div>' +
-          '<div class="pasteDialogFooter">' +
-            '<button type="button" class="btn" id="btnCancelPasteOverlay">Cancel</button>' +
-            '<button type="button" class="btn primary" id="btnImportPasteOverlay">Import Pasted Rows</button>' +
-          '</div>' +
-        '</div>';
-
-      this._shadowRoot.appendChild(overlay);
-
-      var that = this;
-
-      var closeFn = function () {
-        that._closePasteOverlay();
-      };
-
-      var importFn = function () {
-        var txt = that._shadowRoot.getElementById("pasteTextArea");
-        if (!txt) {
-          return;
-        }
-        var pasted = txt.value || "";
-        that._pasteRowsFromClipboard(pasted);
-        that._closePasteOverlay();
-      };
-
-      var closeBtn = this._shadowRoot.getElementById("btnClosePasteOverlay");
-      var cancelBtn = this._shadowRoot.getElementById("btnCancelPasteOverlay");
-      var importBtn = this._shadowRoot.getElementById("btnImportPasteOverlay");
-      var textArea = this._shadowRoot.getElementById("pasteTextArea");
-
-      if (closeBtn) closeBtn.addEventListener("click", closeFn);
-      if (cancelBtn) cancelBtn.addEventListener("click", closeFn);
-      if (importBtn) importBtn.addEventListener("click", importFn);
-
-      overlay.addEventListener("click", function (e) {
-        if (e.target === overlay) {
-          that._closePasteOverlay();
-        }
-      });
-
-      if (textArea) {
-        textArea.focus();
-      }
-
-      this._pasteOverlayOpen = true;
-    }
-
-    _closePasteOverlay() {
-      var overlay = this._shadowRoot.getElementById("pasteOverlay");
-      if (overlay) {
-        overlay.parentNode.removeChild(overlay);
-      }
-      this._pasteOverlayOpen = false;
-    }
-
-    _pasteRowsFromClipboard(text) {
-      if (this._activeTab !== "create") {
-        return;
-      }
-
-      var rawText = String(text || "");
-      if (rawText === "") {
-        return;
-      }
-
-      rawText = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-      var lines = rawText.split("\n");
-      var addedCount = 0;
-      var i = 0;
-      var startIndex = 0;
-
-      if (lines.length > 0) {
-        var firstLineUpper = String(lines[0] || "").toUpperCase();
-        if (
-          firstLineUpper.indexOf("GLACCOUNT") > -1 &&
-          firstLineUpper.indexOf("COSTCENTER") > -1 &&
-          firstLineUpper.indexOf("PROFITCENTER") > -1
-        ) {
-          startIndex = 1;
-        }
-      }
-
-      for (i = startIndex; i < lines.length; i++) {
-        var line = String(lines[i] || "").trim();
-        if (line === "") {
-          continue;
-        }
-
-        var cols = line.split("\t");
-        if (!cols || cols.length < 1) {
-          continue;
-        }
-
-        var row = this._createEmptyRow("NEW");
-
-        row.GLACCOUNT = this._safeString(cols[0]);
-        row.COSTCENTER = this._safeString(cols[1]);
-        row.PROFITCENTER = this._safeString(cols[2]);
-        row.SEGMENT = this._safeString(cols[3]);
-        row.MANAGEMENT_SUB_MAPPING = this._safeString(cols[4]);
-        row.MANAGEMENT_MAPPING = this._safeString(cols[5]);
-        row.Hierarchy = this._safeString(cols[6]);
-        row.SNAPSHOT = this._safeString(cols[7]);
-
-        row.selected = false;
-        row.isModified = true;
-        row.rowStatus = "NEW";
-
-        if (
-          row.GLACCOUNT === "" &&
-          row.COSTCENTER === "" &&
-          row.PROFITCENTER === "" &&
-          row.SEGMENT === "" &&
-          row.MANAGEMENT_SUB_MAPPING === "" &&
-          row.MANAGEMENT_MAPPING === "" &&
-          row.Hierarchy === "" &&
-          row.SNAPSHOT === ""
-        ) {
-          continue;
-        }
-
-        this._updateRowId(row);
-        this._rows.push(row);
-        addedCount++;
-      }
-
-      if (addedCount > 0) {
-        if (
-          this._rows.length > 1 &&
-          this._rows[0] &&
-          this._rows[0].GLACCOUNT === "" &&
-          this._rows[0].COSTCENTER === "" &&
-          this._rows[0].PROFITCENTER === "" &&
-          this._rows[0].SEGMENT === "" &&
-          this._rows[0].MANAGEMENT_SUB_MAPPING === "" &&
-          this._rows[0].MANAGEMENT_MAPPING === "" &&
-          this._rows[0].Hierarchy === "" &&
-          this._rows[0].SNAPSHOT === ""
-        ) {
-          this._rows.splice(0, 1);
-        }
-
-        this._validationErrors = [];
-        this._validationResult = "true";
-        this._widgetStatus = "CHANGED";
-        this._lastEvent = JSON.stringify({
-          type: "pasteRows",
-          tab: "create",
-          addedCount: addedCount
-        });
-        this._syncAll();
-        this._refreshTable();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          rows: this._rows
-        });
-      }
-    }
-
-    getVisibleRowCount() {
-      if (this._activeTab !== "manage") {
-        return this._rows.length;
-      }
-      return this._filteredManageIndexes.length;
-    }
-
     _render() {
       this._shadowRoot.innerHTML = `
         <style>
@@ -826,395 +1109,217 @@
           .tabbar { display:flex; gap:0; border-bottom:1px solid #dfe8f2; background:#f8fbff; }
           .tabbtn { border:none; background:transparent; padding:14px 18px; cursor:pointer; font-weight:700; font-size:13px; color:#5d7288; border-bottom:3px solid transparent; }
           .tabbtn.active { color:#0a6ed1; border-bottom-color:#0a6ed1; background:#ffffff; }
-
-          .toolbarWrap { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px; border-bottom:1px solid #e5edf7; background:#f8fbff; flex-wrap:wrap; }
-          .toolbarLeft { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-          .toolbarRight { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-left:auto; }
-
-          .manageTopbar {
-            display:flex;
-            justify-content:space-between;
-            align-items:flex-end;
-            gap:12px;
-            padding:10px 12px;
-            border-bottom:1px solid #e5edf7;
-            background:#ffffff;
-            flex-wrap:wrap;
-            position:sticky;
-            top:0;
-            z-index:4;
-          }
-
-          .manageFilters {
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-            align-items:flex-end;
-          }
-
-          .filterCard {
-            min-width:180px;
-            display:flex;
-            flex-direction:column;
-            gap:4px;
-          }
-
-          .filterCardLabel {
-            font-size:11px;
-            font-weight:700;
-            color:#5d7288;
-            letter-spacing:0.2px;
-          }
-
-          .filterTrigger {
-            width:100%;
-            height:34px;
-            border:1px solid #c9d6e5;
-            border-radius:8px;
-            background:#fff;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            box-sizing:border-box;
-            padding:0 10px;
-            cursor:pointer;
-            font-size:13px;
-            color:#223548;
-            user-select:none;
-          }
-
-          .filterTrigger .label {
-            overflow:hidden;
-            text-overflow:ellipsis;
-            white-space:nowrap;
-            padding-right:8px;
-          }
-
-          .filterTrigger .arrow {
-            color:#6a7f94;
-            font-size:11px;
-            flex:0 0 auto;
-          }
-
-          .searchBox {
-            width:260px;
-            max-width:100%;
-            height:36px;
-            border:1px solid #c7d7ea;
-            background:#ffffff;
-            color:#223548;
-            border-radius:8px;
-            padding:0 12px;
-            font-size:13px;
-            outline:none;
-          }
-
-          .searchBox:focus {
-            border-color:#0a6ed1;
-            box-shadow:0 0 0 2px rgba(10,110,209,0.12);
-          }
-
-          .btn { border:1px solid #c7d7ea; background:#ffffff; color:#0a6ed1; border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; }
-          .btn:hover { background:#f3f8fd; }
-          .btn.primary { background:#0a6ed1; color:#ffffff; border-color:#0a6ed1; }
-          .btn.danger { color:#bb1e1e; border-color:#efb4b4; background:#fff7f7; }
+          .toolbarWrap { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid #eef3f8; flex-wrap:wrap; }
+          .toolbarLeft, .toolbarRight { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+          .btn { border:1px solid #c8d4e3; background:#ffffff; color:#223548; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:12px; font-weight:700; }
+          .btn:hover { background:#f6f9fc; }
+          .btn.primary { background:#0a6ed1; border-color:#0a6ed1; color:#ffffff; }
+          .btn.primary:hover { background:#085caf; }
+          .btn.danger { border-color:#d64550; color:#d64550; }
+          .btn.danger:hover { background:#fff5f5; }
+          .searchBox { border:1px solid #cdd9e5; border-radius:10px; padding:9px 12px; min-width:240px; font-size:12px; }
+          .muted { font-size:12px; color:#5d7288; }
+          .manageTopbar { padding:14px 16px 0 16px; }
+          .manageFilters { display:flex; gap:12px; flex-wrap:wrap; }
+          .filterCard { min-width:220px; }
+          .filterCardLabel { font-size:11px; font-weight:700; color:#5d7288; margin-bottom:6px; }
+          .gridWrap { overflow:auto; border-top:1px solid #eef3f8; }
+          table { width:100%; border-collapse:separate; border-spacing:0; min-width:1700px; }
+          thead th { position:sticky; top:0; z-index:2; background:#f7faff; color:#31485f; font-size:12px; text-align:left; padding:10px 10px; border-bottom:1px solid #dfe8f2; border-right:1px solid #edf2f7; white-space:nowrap; }
+          tbody td { padding:8px 10px; border-bottom:1px solid #edf2f7; border-right:1px solid #f3f6fa; vertical-align:top; background:#ffffff; }
+          tbody tr:hover td { background:#fbfdff; }
+          .readonly-cell { min-height:18px; padding:9px 10px; background:#f8fafc; border:1px solid #e4ebf3; border-radius:8px; font-size:12px; color:#31485f; }
+          .dropdown-trigger { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:18px; padding:9px 10px; background:#ffffff; border:1px solid #cfd9e4; border-radius:8px; cursor:pointer; font-size:12px; color:#223548; }
+          .dropdown-trigger:hover { border-color:#0a6ed1; }
+          .dropdown-trigger .label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+          .dropdown-trigger .arrow { color:#6f8297; font-size:11px; flex:0 0 auto; }
+          .row-checkbox { width:16px; height:16px; cursor:pointer; }
+          .summary { display:flex; gap:22px; flex-wrap:wrap; padding:12px 16px; border-top:1px solid #eef3f8; background:#fbfdff; font-size:12px; color:#41586f; }
+          .error { border-color:#d64550 !important; background:#fff8f8 !important; }
+          .rowErr { font-size:11px; color:#c92a36; margin-top:5px; line-height:1.3; }
+          .errorRow td { background:#fffafb; }
+          .modifiedRow td { background:#fcfffb; }
+          .empty-msg { text-align:center; color:#6b8094; padding:30px 12px !important; }
+          .pager { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 16px; border-top:1px solid #eef3f8; background:#ffffff; }
+          .pagerControls { display:flex; align-items:center; gap:8px; }
+          .pageInfo, .loadMoreInfo { font-size:12px; color:#5d7288; }
 
           .pasteBanner {
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:12px;
-            padding:10px 12px;
-            border-bottom:1px solid #e5edf7;
-            background:linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%);
-            flex-wrap:wrap;
+            margin: 12px 16px 0 16px;
+            padding: 12px 14px;
+            border: 1px solid #d9e7f7;
+            background: #f7fbff;
+            border-radius: 10px;
           }
 
           .pasteHint {
-            font-size:12px;
-            color:#5f7083;
-            line-height:1.4;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #35506b;
           }
 
-          .pasteHint strong {
-            color:#223548;
-          }
-
-          .pasteOverlay {
+          .pasteModalOverlay {
             position: fixed;
             inset: 0;
-            background: rgba(34,53,72,0.35);
-            z-index: 1000000;
+            background: rgba(34, 53, 72, 0.35);
+            z-index: 999999;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 24px;
             box-sizing: border-box;
           }
 
-          .pasteDialog {
-            width: 760px;
-            max-width: 100%;
+          .pasteModal {
+            width: min(860px, 96vw);
             background: #ffffff;
             border-radius: 14px;
-            box-shadow: 0 20px 50px rgba(34,53,72,0.25);
-            border: 1px solid #dbe5f0;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+            border: 1px solid #d9e2ef;
             overflow: hidden;
           }
 
-          .pasteDialogHeader {
+          .pasteModalHeader {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 14px 16px;
-            border-bottom: 1px solid #e6edf5;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid #e5edf5;
             background: #f8fbff;
           }
 
-          .pasteDialogTitle {
-            font-size: 15px;
+          .pasteModalTitle {
+            font-size: 16px;
             font-weight: 700;
             color: #223548;
           }
 
-          .pasteDialogClose {
-            border: 1px solid #c7d7ea;
-            background: #ffffff;
-            color: #5f6f82;
-            border-radius: 8px;
-            width: 34px;
-            height: 34px;
-            cursor: pointer;
-            font-size: 18px;
+          .pasteModalClose {
+            border: none;
+            background: transparent;
+            font-size: 22px;
             line-height: 1;
+            cursor: pointer;
+            color: #5d7288;
           }
 
-          .pasteDialogBody {
-            padding: 16px;
+          .pasteModalBody {
+            padding: 16px 18px 12px 18px;
           }
 
-          .pasteDialogHint {
+          .pastePanelHelp {
+            font-size: 13px;
+            color: #223548;
+            margin-bottom: 8px;
+          }
+
+          .pastePanelOrder {
             font-size: 12px;
             color: #5d7288;
-            margin-bottom: 10px;
-            line-height: 1.45;
+            margin-bottom: 12px;
+            line-height: 1.5;
           }
 
-          .pasteTextArea {
+          .pastePanelTextarea {
             width: 100%;
-            min-height: 220px;
+            min-height: 260px;
             resize: vertical;
-            border: 1px solid #c7d7ea;
+            border: 1px solid #c9d7e6;
             border-radius: 10px;
             padding: 12px;
-            box-sizing: border-box;
-            font-size: 13px;
-            font-family: Arial, sans-serif;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.45;
             color: #223548;
+            background: #ffffff;
+            box-sizing: border-box;
             outline: none;
           }
 
-          .pasteTextArea:focus {
+          .pastePanelTextarea:focus {
             border-color: #0a6ed1;
-            box-shadow: 0 0 0 2px rgba(10,110,209,0.12);
+            box-shadow: 0 0 0 3px rgba(10, 110, 209, 0.12);
           }
 
-          .pasteDialogFooter {
+          .pasteModalFooter {
             display: flex;
             justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 18px 18px 18px;
+          }
+
+          .project-widget-dropdown-panel {
+            position: fixed;
+            background: #ffffff;
+            border: 1px solid #d5e0ec;
+            border-radius: 12px;
+            box-shadow: 0 18px 40px rgba(26, 44, 61, 0.18);
+            overflow: hidden;
+          }
+
+          .dropdown-topbar {
+            display: flex;
+            align-items: center;
             gap: 8px;
-            padding: 14px 16px;
-            border-top: 1px solid #e6edf5;
+            padding: 10px;
+            border-bottom: 1px solid #eef3f8;
             background: #fbfdff;
           }
 
-          .gridWrap { overflow:auto; max-height:520px; background:#ffffff; }
-          table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
-          th, td { border-bottom:1px solid #edf2f7; padding:8px; vertical-align:top; white-space:nowrap; box-sizing:border-box; }
-          th { position:sticky; top:0; background:#eef4fb; z-index:2; text-align:left; font-size:12px; color:#223548; font-weight:700; }
-          tr:hover td { background:#fafcff; }
-          tr.errorRow td { background:#fff7f7; }
-          tr.modifiedRow td { background:#fffbeb; }
-
-          .readonly-cell {
-            width:100%;
-            min-height:34px;
-            height:34px;
-            border:1px solid #d6dee8;
-            border-radius:6px;
-            padding:6px 10px;
-            font-size:13px;
-            background:#f6f8fb;
-            color:#425466;
-            box-sizing:border-box;
-            display:flex;
-            align-items:center;
+          .dropdown-search-wrap {
+            flex: 1;
           }
 
-          .dropdown-trigger {
-            width:100%;
-            min-height:34px;
-            height:34px;
-            border:1px solid #c9d6e5;
-            border-radius:6px;
-            background:#fff;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            box-sizing:border-box;
-            padding:0 10px;
-            cursor:pointer;
-            font-size:13px;
-            color:#223548;
-            user-select:none;
+          .dropdown-search-input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #cfd9e4;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
           }
 
-          .dropdown-trigger .label {
-            overflow:hidden;
-            text-overflow:ellipsis;
-            white-space:nowrap;
-            padding-right:8px;
+          .dropdown-close-btn, .dropdown-clear-btn {
+            border: 1px solid #c8d4e3;
+            background: #ffffff;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 12px;
+            padding: 7px 10px;
           }
 
-          .dropdown-trigger .arrow {
-            color:#6a7f94;
-            font-size:11px;
-            flex:0 0 auto;
+          .dropdown-actions {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eef3f8;
+            background: #ffffff;
           }
 
-          .dropdown-trigger.error {
-            border-color:#e25555;
-            background:#fff5f5;
+          .dropdown-list {
+            max-height: 320px;
+            overflow: auto;
           }
 
-          .rowErr { margin-top:4px; font-size:11px; color:#c53030; white-space:normal; max-width:240px; line-height:1.3; }
-          .summary { padding:10px 12px; border-top:1px solid #e5edf7; display:flex; gap:18px; font-size:12px; background:#fafcff; flex-wrap:wrap; }
-          .row-checkbox { width:22px; height:22px; cursor:pointer; margin-top:8px; }
-          .select-all-wrap { display:flex; align-items:center; gap:6px; }
-          .select-all-checkbox { width:16px; height:16px; cursor:pointer; }
-          .muted { font-size:12px; color:#6b7c93; }
-          .pager { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid #e5edf7; background:#ffffff; }
-          .empty-msg { padding:40px; text-align:center; color:#8a9bb0; font-size:14px; }
+          .dropdown-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            border-bottom: 1px solid #f3f6fa;
+          }
+
+          .dropdown-item:hover,
+          .dropdown-item.selected {
+            background: #f2f8ff;
+          }
+
+          .dropdown-empty,
+          .dropdown-more {
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #5d7288;
+          }
         </style>
         <div class="wrap" id="widgetWrap"></div>
       `;
-    }
-
-    _renderVisibleOnly() {
-      var tbody = this._shadowRoot.getElementById("tbodyVirtual");
-      if (!tbody) { return; }
-
-      var rowErrorMap = this._getRowErrorMap();
-      var html = "";
-      var i = 0;
-      var j = 0;
-      var activeColumns = this._activeTab === "manage" ? this._manageColumns : this._createColumns;
-      var visibleIndexes = this._activeTab === "manage"
-        ? this._getManagePagedIndexes()
-        : (function (length) {
-            var arr = [];
-            for (var k = 0; k < length; k++) { arr.push(k); }
-            return arr;
-          }.call(this, this._rows.length));
-
-      if (visibleIndexes.length === 0) {
-        var colCount = activeColumns.length;
-        html = '<tr><td colspan="' + colCount + '" class="empty-msg">No data to display.</td></tr>';
-        tbody.innerHTML = html;
-        this._refreshSummaryOnly();
-        return;
-      }
-
-      for (i = 0; i < visibleIndexes.length; i++) {
-        var actualIndex = visibleIndexes[i];
-        var sourceRows = this._activeTab === "manage" ? this._manageRows : this._rows;
-        var row = sourceRows[actualIndex];
-        var rowErrors = rowErrorMap[actualIndex] || [];
-        var rowClass = "";
-
-        if (rowErrors.length) {
-          rowClass = "errorRow";
-        } else if (row.isModified === true) {
-          rowClass = "modifiedRow";
-        }
-
-        html += '<tr class="' + rowClass + '">';
-
-        for (j = 0; j < activeColumns.length; j++) {
-          html += '<td style="width:' + activeColumns[j].width + '">'
-            + this._renderCell(this._activeTab, row, actualIndex, activeColumns[j], rowErrors)
-            + '</td>';
-        }
-
-        html += '</tr>';
-      }
-
-      tbody.innerHTML = html;
-      this._bindCellEvents();
-
-      var selectAll = this._shadowRoot.getElementById(this._activeTab === "manage" ? "selectAllManage" : "selectAllCreate");
-      if (selectAll) { selectAll.checked = this._areAllRowsSelected(this._activeTab); }
-
-      this._refreshSummaryOnly();
-    }
-
-    _refreshToolbarButtons() {
-      var hasSelection = this._hasSelectedRows(this._activeTab);
-      var toolbarRight = this._shadowRoot.getElementById("toolbarRight");
-      if (!toolbarRight) { return; }
-
-      if (this._activeTab === "create") {
-        var existingDeleteCreate = this._shadowRoot.getElementById("btnDelete");
-        if (hasSelection && !existingDeleteCreate) {
-          var newDeleteBtnCreate = document.createElement("button");
-          newDeleteBtnCreate.className = "btn danger";
-          newDeleteBtnCreate.id = "btnDelete";
-          newDeleteBtnCreate.textContent = "Delete Selected";
-          newDeleteBtnCreate.addEventListener("click", this.deleteSelectedRows.bind(this));
-          var btnValidate = this._shadowRoot.getElementById("btnValidate");
-          if (btnValidate) {
-            toolbarRight.insertBefore(newDeleteBtnCreate, btnValidate);
-          } else {
-            toolbarRight.appendChild(newDeleteBtnCreate);
-          }
-        } else if (!hasSelection && existingDeleteCreate) {
-          existingDeleteCreate.parentNode.removeChild(existingDeleteCreate);
-        }
-
-        var existingCopyCreate = this._shadowRoot.getElementById("btnCopy");
-        if (hasSelection && !existingCopyCreate) {
-          var newCopyBtnCreate = document.createElement("button");
-          newCopyBtnCreate.className = "btn";
-          newCopyBtnCreate.id = "btnCopy";
-          newCopyBtnCreate.textContent = "Copy";
-          newCopyBtnCreate.addEventListener("click", this.copySelectedRows.bind(this));
-          var btnDeleteRef = this._shadowRoot.getElementById("btnDelete") || this._shadowRoot.getElementById("btnValidate");
-          if (btnDeleteRef) {
-            toolbarRight.insertBefore(newCopyBtnCreate, btnDeleteRef);
-          } else {
-            toolbarRight.appendChild(newCopyBtnCreate);
-          }
-        } else if (!hasSelection && existingCopyCreate) {
-          existingCopyCreate.parentNode.removeChild(existingCopyCreate);
-        }
-      } else {
-        var existingDeleteManage = this._shadowRoot.getElementById("btnDeleteManage");
-        if (hasSelection && !existingDeleteManage) {
-          var newDeleteBtnManage = document.createElement("button");
-          newDeleteBtnManage.className = "btn danger";
-          newDeleteBtnManage.id = "btnDeleteManage";
-          newDeleteBtnManage.textContent = "Delete Selected";
-          newDeleteBtnManage.addEventListener("click", this.deleteManageData.bind(this));
-          var btnClearManage = this._shadowRoot.getElementById("btnClearManage");
-          if (btnClearManage) {
-            toolbarRight.insertBefore(newDeleteBtnManage, btnClearManage);
-          } else {
-            toolbarRight.appendChild(newDeleteBtnManage);
-          }
-        } else if (!hasSelection && existingDeleteManage) {
-          existingDeleteManage.parentNode.removeChild(existingDeleteManage);
-        }
-      }
     }
 
     _refreshTable() {
@@ -1228,11 +1333,11 @@
         this._rebuildManageFilteredIndexes();
       }
 
-      var html = '';
+      var html = "";
       html += '<div class="tabbar">';
-      html += '<button class="tabbtn ' + (this._activeTab === 'create' ? 'active' : '') + '" id="tabCreate">Create Mapping</button>';
-      html += '<button class="tabbtn ' + (this._activeTab === 'manage' ? 'active' : '') + '" id="tabManage">Manage Mapping</button>';
-      html += '</div>';
+      html += '<button class="tabbtn ' + (this._activeTab === "create" ? "active" : "") + '" id="tabCreate">Create Mapping</button>';
+      html += '<button class="tabbtn ' + (this._activeTab === "manage" ? "active" : "") + '" id="tabManage">Manage Mapping</button>';
+      html += "</div>";
 
       html += '<div class="toolbarWrap">';
       if (this._activeTab === "create") {
@@ -1249,12 +1354,12 @@
         html += '<button class="btn" id="btnValidate">Validate</button>';
         html += '<button class="btn primary" id="btnSave">Save</button>';
         html += '<button class="btn" id="btnClear">Clear</button>';
-        html += '</div>';
+        html += "</div>";
       } else {
         html += '<div class="toolbarLeft">';
         html += '<input class="searchBox" id="manageIdSearch" type="text" placeholder="Search ID..." value="' + this._escape(this._manageIdSearch || "") + '" />';
-        html += '<span class="muted" id="visibleCountText">Visible: ' + this.getVisibleRowCount() + '</span>';
-        html += '</div>';
+        html += '<span class="muted" id="visibleCountText">Visible: ' + this.getVisibleRowCount() + "</span>";
+        html += "</div>";
 
         html += '<div class="toolbarRight" id="toolbarRight">';
         html += '<button class="btn" id="btnLoadManage">Load Data</button>';
@@ -1265,68 +1370,89 @@
         }
 
         html += '<button class="btn" id="btnClearManage">Clear</button>';
-        html += '</div>';
+        html += "</div>";
       }
-      html += '</div>';
+      html += "</div>";
 
       if (this._activeTab === "create") {
         html += '<div class="pasteBanner">';
-        html += '<div class="pasteHint"><strong>Excel Paste Ready:</strong> Copy rows in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click <strong>Paste from Excel</strong>.</div>';
-        html += '</div>';
+        html += '<div class="pasteHint"><strong>Excel Paste:</strong> Copy rows in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click <strong>Paste from Excel</strong>.</div>';
+        html += "</div>";
+
+        if (this._pastePanelOpen) {
+          html += '<div class="pasteModalOverlay" id="pasteModalOverlay">';
+          html += '  <div class="pasteModal" role="dialog" aria-modal="true" aria-labelledby="pastePanelTitle">';
+          html += '    <div class="pasteModalHeader">';
+          html += '      <div class="pasteModalTitle" id="pastePanelTitle">Paste Rows from Excel</div>';
+          html += '      <button type="button" class="pasteModalClose" id="btnClosePastePanel">×</button>';
+          html += "    </div>";
+          html += '    <div class="pasteModalBody">';
+          html += '      <div class="pastePanelHelp">Press <strong>Ctrl+V</strong> inside the box below, then click <strong>Import Pasted Rows</strong>.</div>';
+          html += '      <div class="pastePanelOrder">Expected column order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT</div>';
+          html += '      <textarea id="pastePanelInput" class="pastePanelTextarea" placeholder="Paste Excel rows here...">' + this._escape(this._pasteBuffer || "") + "</textarea>";
+          html += "    </div>";
+          html += '    <div class="pasteModalFooter">';
+          html += '      <button type="button" class="btn" id="btnCancelPastePanel">Cancel</button>';
+          html += '      <button type="button" class="btn primary" id="btnImportPastePanel">Import Pasted Rows</button>';
+          html += "    </div>";
+          html += "  </div>";
+          html += "</div>";
+        }
       }
 
       if (this._activeTab === "manage") {
         html += '<div class="manageTopbar">';
         html += '<div class="manageFilters">';
-
         html += '<div class="filterCard">';
         html += '<div class="filterCardLabel">SEGMENT</div>';
-        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSegment" data-filter-field="SEGMENT">';
-        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SEGMENT") || "All") + '</span><span class="arrow">▼</span></div>';
-        html += '</div>';
+        html += '<div class="filterTrigger dropdown-trigger" tabindex="0" id="filterTriggerSegment" data-filter-field="SEGMENT">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SEGMENT") || "All") + "</span>";
+        html += '<span class="arrow">▼</span>';
+        html += "</div>";
+        html += "</div>";
 
         html += '<div class="filterCard">';
-        html += '<div class="filterCardLabel">HIERARCHY</div>';
-        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerHierarchy" data-filter-field="Hierarchy">';
-        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("Hierarchy") || "All") + '</span><span class="arrow">▼</span></div>';
-        html += '</div>';
+        html += '<div class="filterCardLabel">Hierarchy</div>';
+        html += '<div class="filterTrigger dropdown-trigger" tabindex="0" id="filterTriggerHierarchy" data-filter-field="Hierarchy">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("Hierarchy") || "All") + "</span>";
+        html += '<span class="arrow">▼</span>';
+        html += "</div>";
+        html += "</div>";
 
         html += '<div class="filterCard">';
         html += '<div class="filterCardLabel">SNAPSHOT</div>';
-        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSnapshot" data-filter-field="SNAPSHOT">';
-        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SNAPSHOT") || "All") + '</span><span class="arrow">▼</span></div>';
-        html += '</div>';
-
-        html += '</div>';
-
-        html += '<div class="pager">';
-        html += '<span class="muted" id="loadMoreInfo">Showing '
-          + (this.getVisibleRowCount() === 0 ? 0 : (((this._manageCurrentPage - 1) * this._managePageSize) + 1))
-          + ' to '
-          + Math.min(this._manageCurrentPage * this._managePageSize, this.getVisibleRowCount())
-          + ' of ' + this.getVisibleRowCount() + '</span>';
-        html += '<button class="btn" id="btnPrevPage">Previous</button>';
-        html += '<span class="muted" id="pageInfo">Page ' + this._manageCurrentPage + ' of ' + this._getManageTotalPages() + '</span>';
-        html += '<button class="btn" id="btnNextPage">Next</button>';
-        html += '</div>';
-        html += '</div>';
+        html += '<div class="filterTrigger dropdown-trigger" tabindex="0" id="filterTriggerSnapshot" data-filter-field="SNAPSHOT">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SNAPSHOT") || "All") + "</span>";
+        html += '<span class="arrow">▼</span>';
+        html += "</div>";
+        html += "</div>";
+        html += "</div>";
+        html += "</div>";
       }
 
       html += '<div class="gridWrap" id="gridWrap">';
-      html += '<table>';
-      html += '<thead><tr>';
+      html += "<table>";
+      html += "<thead><tr>";
+      html += '<th style="width:70px"><input type="checkbox" id="' + selectAllId + '" ' + (allSelected ? "checked" : "") + " /></th>";
+      for (var i = 1; i < activeColumns.length; i++) {
+        html += '<th style="width:' + activeColumns[i].width + '">' + this._escape(activeColumns[i].label) + "</th>";
+      }
+      html += "</tr></thead>";
+      html += '<tbody id="tbodyVirtual"></tbody>';
+      html += "</table>";
+      html += "</div>";
 
-      for (var h = 0; h < activeColumns.length; h++) {
-        var col = activeColumns[h];
-        if (col.key === "selected") {
-          html += '<th style="width:' + col.width + '"><div class="select-all-wrap"><span>Sel</span><input class="select-all-checkbox" type="checkbox" id="' + selectAllId + '" ' + (allSelected ? 'checked' : '') + ' /></div></th>';
-        } else {
-          html += '<th style="width:' + col.width + '">' + col.label + '</th>';
-        }
+      if (this._activeTab === "manage") {
+        html += '<div class="pager">';
+        html += '<div class="pagerControls">';
+        html += '<button class="btn" id="btnPrevPage">Previous</button>';
+        html += '<button class="btn" id="btnNextPage">Next</button>';
+        html += '<span class="pageInfo" id="pageInfo">Page ' + this._getManageCurrentPage() + " of " + this._getManageTotalPages() + "</span>";
+        html += "</div>";
+        html += '<div class="loadMoreInfo" id="loadMoreInfo"></div>';
+        html += "</div>";
       }
 
-      html += '</tr></thead><tbody id="tbodyVirtual"></tbody>';
-      html += '</table></div>';
       html += this._refreshStatusBarHtml();
 
       var oldGrid = this._shadowRoot.getElementById("gridWrap");
@@ -1351,11 +1477,11 @@
       var errorCss = hasError ? "error" : "";
 
       if (column.type === "checkbox") {
-        return '<input class="row-checkbox ' + errorCss + '" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="checkbox" type="checkbox" ' + (value === true ? 'checked' : '') + ' />';
+        return '<input class="row-checkbox ' + errorCss + '" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="checkbox" type="checkbox" ' + (value === true ? "checked" : "") + " />";
       }
 
       if (column.type === "readonly") {
-        return '<div class="readonly-cell" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="readonly">' + this._escape(String(value)) + '</div>' + (shouldShowError ? this._renderFieldErrors(column.key, rowErrors) : "");
+        return '<div class="readonly-cell" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="readonly">' + this._escape(String(value)) + "</div>" + (shouldShowError ? this._renderFieldErrors(column.key, rowErrors) : "");
       }
 
       if (column.type === "select") {
@@ -1364,11 +1490,11 @@
           displayText = "Select";
         }
 
-        return ''
+        return ""
           + '<div class="dropdown-trigger ' + errorCss + '" tabindex="0" data-tab="' + tabName + '" data-row="' + rowIndex + '" data-field="' + column.key + '" data-type="select">'
-          + '<span class="label">' + this._escape(String(displayText)) + '</span>'
+          + '<span class="label">' + this._escape(String(displayText)) + "</span>"
           + '<span class="arrow">▼</span>'
-          + '</div>'
+          + "</div>"
           + (shouldShowError ? this._renderFieldErrors(column.key, rowErrors) : "");
       }
 
@@ -1429,7 +1555,7 @@
         return "";
       }
 
-      return '<div class="rowErr">' + messages.join("<br>") + '</div>';
+      return '<div class="rowErr">' + messages.join("<br>") + "</div>";
     }
 
     _hasFieldError(fieldName, rowErrors) {
@@ -1473,12 +1599,12 @@
         '<div class="dropdown-topbar">' +
           '<div class="dropdown-search-wrap">' +
             '<input type="text" class="dropdown-search-input" placeholder="Search..." />' +
-          '</div>' +
+          "</div>" +
           '<button type="button" class="dropdown-close-btn" title="Close">×</button>' +
-        '</div>' +
+        "</div>" +
         '<div class="dropdown-actions">' +
           '<button type="button" class="dropdown-clear-btn">Clear selection</button>' +
-        '</div>' +
+        "</div>" +
         '<div class="dropdown-list"></div>';
 
       document.body.appendChild(dropdownPanel);
@@ -1491,412 +1617,95 @@
 
       var that = this;
 
-      this._dropdownCloseBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        that._closeDropdown();
-      });
-
-      this._dropdownClearBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        var rowIndex = that._activeDropdownRow;
-        var fieldName = that._activeDropdownField;
-        var tabName = that._activeDropdownTab;
-        var rows = that._getRowsByTab(tabName);
-
-        if (!rows[rowIndex]) {
+      if (this._dropdownCloseBtn) {
+        this._dropdownCloseBtn.addEventListener("click", function () {
           that._closeDropdown();
-          return;
-        }
+        });
+      }
 
-        rows[rowIndex][fieldName] = "";
+      if (this._dropdownClearBtn) {
+        this._dropdownClearBtn.addEventListener("click", function () {
+          var rowIndex = that._activeDropdownRow;
+          var fieldName = that._activeDropdownField;
+          var tabName = that._activeDropdownTab;
+          var rows = that._getRowsByTab(tabName);
 
-        if (fieldName === "MANAGEMENT_SUB_MAPPING") {
-          rows[rowIndex]["Hierarchy"] = "";
-
-          if (tabName === "manage") {
-            that._setRowOptionsForField("manage", rowIndex, "Hierarchy", []);
-          } else {
-            that._setRowOptionsForField("create", rowIndex, "Hierarchy", []);
+          if (!rows[rowIndex]) {
+            that._closeDropdown();
+            return;
           }
-        }
 
-        if (tabName !== "manage") {
-          that._updateRowId(rows[rowIndex]);
-        }
+          rows[rowIndex][fieldName] = "";
+          if (tabName !== "manage") {
+            that._updateRowId(rows[rowIndex]);
+          }
 
-        rows[rowIndex].isModified = true;
-        rows[rowIndex].rowStatus = "CHANGED";
+          rows[rowIndex].isModified = true;
+          rows[rowIndex].rowStatus = "CHANGED";
 
-        that._validationErrors = [];
-        that._validationResult = "true";
-        that._widgetStatus = "CHANGED";
-        that._lastEvent = JSON.stringify({
-          type: tabName === "manage" ? "manageFieldChange" : "fieldChange",
-          tab: tabName,
-          rowIndex: rowIndex,
-          field: fieldName,
-          value: ""
+          that._validationErrors = [];
+          that._validationResult = "true";
+          that._widgetStatus = "CHANGED";
+          that._syncAll();
+          that._renderVisibleOnly();
+          that._refreshToolbarButtons();
+          that._refreshSummaryOnly();
+          that._fireSimpleEvent("onFieldChange", { tab: tabName, rowIndex: rowIndex, field: fieldName, value: "" });
+          that._fireSimpleEvent("onDataChange", { activeTab: that._activeTab, rows: that._rows, manageRows: that._manageRows });
+          that._closeDropdown();
         });
+      }
 
-        that._syncAll();
-        that._renderVisibleOnly();
-        that._refreshToolbarButtons();
-        that._refreshSummaryOnly();
-        that._fireSimpleEvent("onFieldChange", {
-          tab: tabName,
-          rowIndex: rowIndex,
-          field: fieldName,
-          value: ""
+      if (this._dropdownSearch) {
+        this._dropdownSearch.addEventListener("input", function () {
+          var value = this.value || "";
+          if (that._dropdownSearchTimer) {
+            clearTimeout(that._dropdownSearchTimer);
+          }
+          that._dropdownSearchTimer = setTimeout(function () {
+            that._applyDropdownSearch(value);
+          }, 80);
         });
-        that._fireSimpleEvent("onDataChange", {
-          activeTab: that._activeTab,
-          rows: that._rows,
-          manageRows: that._manageRows
-        });
-        that._closeDropdown();
-      });
-
-      this._dropdownSearch.addEventListener("input", function () {
-        if (that._dropdownSearchTimer) {
-          clearTimeout(that._dropdownSearchTimer);
-        }
-
-        that._dropdownSearchTimer = setTimeout(function () {
-          that._applyDropdownSearch(that._dropdownSearch.value);
-        }, 120);
-      });
-
-      this._dropdownList.addEventListener("scroll", function () {
-        var nearBottom = that._dropdownList.scrollTop + that._dropdownList.clientHeight >= that._dropdownList.scrollHeight - 30;
-        if (nearBottom) {
-          that._appendNextDropdownBatch();
-        }
-      });
+      }
 
       this._documentClickHandler = function (e) {
-        if (!that._dropdownOpen && !that._filterDropdownOpen) {
+        if (!that._dropdownOpen) {
           return;
         }
-
-        var insidePanel = that._dropdownPanel && that._dropdownPanel.contains(e.target);
-        var insideTrigger = that._activeDropdownTrigger && that._activeDropdownTrigger.contains(e.target);
-
-        if (!insidePanel && !insideTrigger && that._dropdownOpen) {
-          that._closeDropdown();
+        if (that._dropdownPanel && that._dropdownPanel.contains(e.target)) {
+          return;
         }
+        if (that._activeDropdownTrigger && that._activeDropdownTrigger.contains && that._activeDropdownTrigger.contains(e.target)) {
+          return;
+        }
+        that._closeDropdown();
       };
 
       document.addEventListener("click", this._documentClickHandler);
     }
 
-    _createFilterDropdownPanel() {
-      if (this._filterDropdownPanel) {
-        return;
-      }
-
-      var panel = document.createElement("div");
-      panel.className = "project-widget-dropdown-panel";
-      panel.style.display = "none";
-
-      panel.innerHTML =
-        '<div class="dropdown-topbar">' +
-          '<div class="dropdown-search-wrap">' +
-            '<input type="text" class="dropdown-search-input" placeholder="Search filter..." />' +
-          '</div>' +
-          '<button type="button" class="dropdown-close-btn" title="Close">×</button>' +
-        '</div>' +
-        '<div class="dropdown-actions">' +
-          '<button type="button" class="dropdown-clear-btn">Clear filter</button>' +
-        '</div>' +
-        '<div class="dropdown-list"></div>';
-
-      document.body.appendChild(panel);
-
-      this._filterDropdownPanel = panel;
-      this._filterDropdownSearch = panel.querySelector(".dropdown-search-input");
-      this._filterDropdownList = panel.querySelector(".dropdown-list");
-      this._filterDropdownCloseBtn = panel.querySelector(".dropdown-close-btn");
-      this._filterDropdownClearBtn = panel.querySelector(".dropdown-clear-btn");
-
-      var that = this;
-
-      this._filterDropdownCloseBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        that._closeFilterDropdown();
-      });
-
-      this._filterDropdownClearBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        that._setManageInlineFilter(that._activeFilterField, "");
-        that._closeFilterDropdown();
-        that._refreshTable();
-      });
-
-      this._filterDropdownSearch.addEventListener("input", function () {
-        if (that._filterDropdownSearchTimer) {
-          clearTimeout(that._filterDropdownSearchTimer);
-        }
-
-        that._filterDropdownSearchTimer = setTimeout(function () {
-          that._applyFilterDropdownSearch(that._filterDropdownSearch.value);
-        }, 120);
-      });
-
-      this._filterDropdownList.addEventListener("scroll", function () {
-        var nearBottom = that._filterDropdownList.scrollTop + that._filterDropdownList.clientHeight >= that._filterDropdownList.scrollHeight - 30;
-        if (nearBottom) {
-          that._appendNextFilterDropdownBatch();
-        }
-      });
-
-      this._filterDocumentClickHandler = function (e) {
-        if (!that._filterDropdownOpen) {
-          return;
-        }
-
-        var insidePanel = that._filterDropdownPanel && that._filterDropdownPanel.contains(e.target);
-        var insideTrigger = that._activeFilterTrigger && that._activeFilterTrigger.contains(e.target);
-
-        if (!insidePanel && !insideTrigger) {
-          that._closeFilterDropdown();
-        }
-      };
-
-      document.addEventListener("click", this._filterDocumentClickHandler);
-    }
-
-    _openFilterDropdown(triggerEl, fieldName) {
-      this._createFilterDropdownPanel();
-
-      this._activeFilterTrigger = triggerEl;
-      this._activeFilterField = fieldName;
-      this._activeFilterOptions = this._getManageFilterOptions(fieldName) || [];
-      this._activeFilterSelectedKey = this._getManageFilterCurrentValue(fieldName) || "";
-
-      var triggerRect = triggerEl.getBoundingClientRect();
-      var dropdownWidth = Math.max(triggerRect.width, 260);
-      var dropdownHeight = 360;
-      var gap = 4;
-
-      var spaceBelow = window.innerHeight - triggerRect.bottom;
-      var spaceAbove = triggerRect.top;
-
-      var dropdownTop = triggerRect.bottom + gap;
-      var dropdownLeft = triggerRect.left;
-
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        dropdownTop = triggerRect.top - dropdownHeight - gap;
-      }
-
-      if (dropdownTop < 10) {
-        dropdownTop = 10;
-      }
-
-      if (dropdownTop + dropdownHeight > window.innerHeight - 10) {
-        dropdownTop = window.innerHeight - dropdownHeight - 10;
-      }
-
-      if (dropdownLeft + dropdownWidth > window.innerWidth - 10) {
-        dropdownLeft = window.innerWidth - dropdownWidth - 10;
-      }
-
-      if (dropdownLeft < 10) {
-        dropdownLeft = 10;
-      }
-
-      this._filterDropdownPanel.style.display = "block";
-      this._filterDropdownPanel.style.position = "fixed";
-      this._filterDropdownPanel.style.left = dropdownLeft + "px";
-      this._filterDropdownPanel.style.top = dropdownTop + "px";
-      this._filterDropdownPanel.style.width = dropdownWidth + "px";
-      this._filterDropdownPanel.style.maxHeight = dropdownHeight + "px";
-      this._filterDropdownPanel.style.zIndex = "999999";
-
-      this._filterDropdownSearch.value = "";
-      this._filteredFilterOptions = this._activeFilterOptions.slice(0);
-      this._filterDropdownRenderedCount = 0;
-      this._filterDropdownList.innerHTML = "";
-      this._appendNextFilterDropdownBatch();
-      this._filterDropdownOpen = true;
-
-      var that = this;
-      setTimeout(function () {
-        if (that._filterDropdownSearch) {
-          that._filterDropdownSearch.focus();
-        }
-      }, 0);
-    }
-
-    _closeFilterDropdown() {
-      if (this._filterDropdownPanel) {
-        this._filterDropdownPanel.style.display = "none";
-      }
-
-      if (this._filterDropdownSearch) {
-        this._filterDropdownSearch.value = "";
-      }
-
-      if (this._filterDropdownList) {
-        this._filterDropdownList.innerHTML = "";
-      }
-
-      this._filterDropdownOpen = false;
-      this._activeFilterTrigger = null;
-      this._activeFilterField = "";
-      this._activeFilterOptions = [];
-      this._activeFilterSelectedKey = "";
-      this._filteredFilterOptions = [];
-      this._filterDropdownRenderedCount = 0;
-    }
-
-    _applyFilterDropdownSearch(searchText) {
-      var source = this._activeFilterOptions || [];
-      var searchValue = String(searchText || "").toLowerCase().trim();
-      var filtered = [];
-      var i = 0;
-
-      if (searchValue === "") {
-        this._filteredFilterOptions = source.slice(0);
-      } else {
-        for (i = 0; i < source.length; i++) {
-          if (source[i].searchText.indexOf(searchValue) > -1) {
-            filtered.push(source[i]);
-          }
-        }
-        this._filteredFilterOptions = filtered;
-      }
-
-      this._filterDropdownRenderedCount = 0;
-      this._filterDropdownList.innerHTML = "";
-      this._appendNextFilterDropdownBatch();
-    }
-
-    _appendNextFilterDropdownBatch() {
-      if (!this._filterDropdownList || !this._filteredFilterOptions) {
-        return;
-      }
-
-      var start = this._filterDropdownRenderedCount;
-      var end = start + this._filterDropdownBatchSize;
-
-      if (start >= this._filteredFilterOptions.length) {
-        return;
-      }
-
-      var fragment = document.createDocumentFragment();
-      var that = this;
-
-      for (var i = start; i < end && i < this._filteredFilterOptions.length; i++) {
-        var opt = this._filteredFilterOptions[i];
-        var item = document.createElement("div");
-        item.className = "dropdown-item";
-
-        if (String(opt.key) === String(this._activeFilterSelectedKey)) {
-          item.className += " selected";
-        }
-
-        item.textContent = opt.text;
-        item.setAttribute("data-key", opt.key);
-
-        item.addEventListener("mousedown", function (e) {
-          e.preventDefault();
-          var selectedKeyValue = this.getAttribute("data-key");
-          that._setManageInlineFilter(that._activeFilterField, selectedKeyValue);
-          that._closeFilterDropdown();
-          that._refreshTable();
-        });
-
-        fragment.appendChild(item);
-      }
-
-      this._filterDropdownList.appendChild(fragment);
-      this._filterDropdownRenderedCount = Math.min(end, this._filteredFilterOptions.length);
-
-      if (this._filterDropdownRenderedCount < this._filteredFilterOptions.length) {
-        if (!this._filterDropdownListMoreEl) {
-          this._filterDropdownListMoreEl = document.createElement("div");
-          this._filterDropdownListMoreEl.className = "dropdown-more";
-        }
-
-        this._filterDropdownListMoreEl.textContent =
-          "Showing " + String(this._filterDropdownRenderedCount) + " of " + String(this._filteredFilterOptions.length);
-
-        if (!this._filterDropdownListMoreEl.parentNode) {
-          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
-        } else {
-          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
-        }
-      } else {
-        if (this._filterDropdownListMoreEl && this._filterDropdownListMoreEl.parentNode) {
-          this._filterDropdownListMoreEl.parentNode.removeChild(this._filterDropdownListMoreEl);
-        }
-      }
-
-      if (this._filteredFilterOptions.length === 0) {
-        this._filterDropdownList.innerHTML = '<div class="dropdown-empty">No results found</div>';
-      }
-    }
-
     _openDropdown(triggerEl, tabName, rowIndex, fieldName) {
-      this._createDropdownPanel();
+      if (!this._dropdownPanel || !triggerEl) {
+        return;
+      }
 
       this._activeDropdownTrigger = triggerEl;
       this._activeDropdownTab = tabName;
       this._activeDropdownRow = rowIndex;
       this._activeDropdownField = fieldName;
-      this._activeDropdownOptions = this._getOptionsForField(tabName, fieldName, rowIndex) || [];
 
       var rows = this._getRowsByTab(tabName);
-      this._activeDropdownSelectedKey = rows[rowIndex] ? rows[rowIndex][fieldName] : "";
+      var row = rows[rowIndex];
+      this._activeDropdownSelectedKey = row ? this._safeString(row[fieldName]) : "";
+      this._activeDropdownOptions = this._getOptionsForField(tabName, fieldName, rowIndex).slice(0);
 
-      if (this._dropdownClearBtn) {
-        if (this._activeDropdownSelectedKey && String(this._activeDropdownSelectedKey).trim() !== "") {
-          this._dropdownClearBtn.style.display = "block";
-        } else {
-          this._dropdownClearBtn.style.display = "none";
-        }
-      }
-
-      var triggerRect = triggerEl.getBoundingClientRect();
-      var dropdownWidth = Math.max(triggerRect.width, 320);
-      var dropdownHeight = 380;
-      var gap = 4;
-
-      var spaceBelow = window.innerHeight - triggerRect.bottom;
-      var spaceAbove = triggerRect.top;
-
-      var dropdownTop = triggerRect.bottom + gap;
-      var dropdownLeft = triggerRect.left;
-
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        dropdownTop = triggerRect.top - dropdownHeight - gap;
-      }
-
-      if (dropdownTop < 10) {
-        dropdownTop = 10;
-      }
-
-      if (dropdownTop + dropdownHeight > window.innerHeight - 10) {
-        dropdownTop = window.innerHeight - dropdownHeight - 10;
-      }
-
-      if (dropdownLeft + dropdownWidth > window.innerWidth - 10) {
-        dropdownLeft = window.innerWidth - dropdownWidth - 10;
-      }
-
-      if (dropdownLeft < 10) {
-        dropdownLeft = 10;
-      }
+      var rect = triggerEl.getBoundingClientRect();
+      var dropdownWidth = Math.max(280, rect.width);
+      var dropdownHeight = Math.min(window.innerHeight - rect.bottom - 20, 420);
 
       this._dropdownPanel.style.display = "block";
-      this._dropdownPanel.style.position = "fixed";
-      this._dropdownPanel.style.left = dropdownLeft + "px";
-      this._dropdownPanel.style.top = dropdownTop + "px";
+      this._dropdownPanel.style.left = Math.max(8, rect.left) + "px";
+      this._dropdownPanel.style.top = Math.max(8, rect.bottom + 6) + "px";
       this._dropdownPanel.style.width = dropdownWidth + "px";
       this._dropdownPanel.style.maxHeight = dropdownHeight + "px";
       this._dropdownPanel.style.zIndex = "999999";
@@ -1931,7 +1740,6 @@
 
       this._dropdownOpen = false;
       this._activeDropdownTrigger = null;
-      this._activeDropdownTab = "create";
       this._activeDropdownRow = -1;
       this._activeDropdownField = "";
       this._activeDropdownOptions = [];
@@ -2063,6 +1871,223 @@
       }
     }
 
+    _createFilterDropdownPanel() {
+      if (this._filterDropdownPanel) {
+        return;
+      }
+
+      var dropdownPanel = document.createElement("div");
+      dropdownPanel.className = "project-widget-dropdown-panel";
+      dropdownPanel.style.display = "none";
+
+      dropdownPanel.innerHTML =
+        '<div class="dropdown-topbar">' +
+          '<div class="dropdown-search-wrap">' +
+            '<input type="text" class="dropdown-search-input" placeholder="Search..." />' +
+          "</div>" +
+          '<button type="button" class="dropdown-close-btn" title="Close">×</button>' +
+        "</div>" +
+        '<div class="dropdown-actions">' +
+          '<button type="button" class="dropdown-clear-btn">Clear filter</button>' +
+        "</div>" +
+        '<div class="dropdown-list"></div>';
+
+      document.body.appendChild(dropdownPanel);
+
+      this._filterDropdownPanel = dropdownPanel;
+      this._filterDropdownSearch = dropdownPanel.querySelector(".dropdown-search-input");
+      this._filterDropdownList = dropdownPanel.querySelector(".dropdown-list");
+      this._filterDropdownCloseBtn = dropdownPanel.querySelector(".dropdown-close-btn");
+      this._filterDropdownClearBtn = dropdownPanel.querySelector(".dropdown-clear-btn");
+
+      var that = this;
+
+      if (this._filterDropdownCloseBtn) {
+        this._filterDropdownCloseBtn.addEventListener("click", function () {
+          that._closeFilterDropdown();
+        });
+      }
+
+      if (this._filterDropdownClearBtn) {
+        this._filterDropdownClearBtn.addEventListener("click", function () {
+          that._setManageInlineFilter(that._activeFilterField, "");
+          that._closeFilterDropdown();
+        });
+      }
+
+      if (this._filterDropdownSearch) {
+        this._filterDropdownSearch.addEventListener("input", function () {
+          var value = this.value || "";
+          if (that._filterDropdownSearchTimer) {
+            clearTimeout(that._filterDropdownSearchTimer);
+          }
+          that._filterDropdownSearchTimer = setTimeout(function () {
+            that._applyFilterDropdownSearch(value);
+          }, 80);
+        });
+      }
+
+      this._filterDocumentClickHandler = function (e) {
+        if (!that._filterDropdownOpen) {
+          return;
+        }
+        if (that._filterDropdownPanel && that._filterDropdownPanel.contains(e.target)) {
+          return;
+        }
+        if (that._activeFilterTrigger && that._activeFilterTrigger.contains && that._activeFilterTrigger.contains(e.target)) {
+          return;
+        }
+        that._closeFilterDropdown();
+      };
+
+      document.addEventListener("click", this._filterDocumentClickHandler);
+    }
+
+    _openFilterDropdown(triggerEl, fieldName) {
+      if (!this._filterDropdownPanel || !triggerEl) {
+        return;
+      }
+
+      this._activeFilterTrigger = triggerEl;
+      this._activeFilterField = fieldName;
+      this._activeFilterSelectedKey = this._getManageFilterCurrentValue(fieldName);
+      this._activeFilterOptions = this._getManageFilterOptions(fieldName);
+
+      var rect = triggerEl.getBoundingClientRect();
+      var dropdownWidth = Math.max(280, rect.width);
+      var dropdownHeight = Math.min(window.innerHeight - rect.bottom - 20, 420);
+
+      this._filterDropdownPanel.style.display = "block";
+      this._filterDropdownPanel.style.left = Math.max(8, rect.left) + "px";
+      this._filterDropdownPanel.style.top = Math.max(8, rect.bottom + 6) + "px";
+      this._filterDropdownPanel.style.width = dropdownWidth + "px";
+      this._filterDropdownPanel.style.maxHeight = dropdownHeight + "px";
+      this._filterDropdownPanel.style.zIndex = "999999";
+
+      this._filterDropdownSearch.value = "";
+      this._filteredFilterOptions = this._activeFilterOptions.slice(0);
+      this._filterDropdownRenderedCount = 0;
+      this._filterDropdownList.innerHTML = "";
+      this._appendNextFilterDropdownBatch();
+      this._filterDropdownOpen = true;
+
+      var that = this;
+      setTimeout(function () {
+        if (that._filterDropdownSearch) {
+          that._filterDropdownSearch.focus();
+        }
+      }, 0);
+    }
+
+    _closeFilterDropdown() {
+      if (this._filterDropdownPanel) {
+        this._filterDropdownPanel.style.display = "none";
+      }
+
+      if (this._filterDropdownSearch) {
+        this._filterDropdownSearch.value = "";
+      }
+
+      if (this._filterDropdownList) {
+        this._filterDropdownList.innerHTML = "";
+      }
+
+      this._filterDropdownOpen = false;
+      this._activeFilterTrigger = null;
+      this._activeFilterField = "";
+      this._activeFilterOptions = [];
+      this._activeFilterSelectedKey = "";
+      this._filteredFilterOptions = [];
+      this._filterDropdownRenderedCount = 0;
+    }
+
+    _applyFilterDropdownSearch(searchText) {
+      var source = this._activeFilterOptions || [];
+      var searchValue = String(searchText || "").toLowerCase().trim();
+      var filtered = [];
+      var i = 0;
+
+      if (searchValue === "") {
+        this._filteredFilterOptions = source.slice(0);
+      } else {
+        for (i = 0; i < source.length; i++) {
+          if (source[i].searchText.indexOf(searchValue) > -1) {
+            filtered.push(source[i]);
+          }
+        }
+        this._filteredFilterOptions = filtered;
+      }
+
+      this._filterDropdownRenderedCount = 0;
+      this._filterDropdownList.innerHTML = "";
+      this._appendNextFilterDropdownBatch();
+    }
+
+    _appendNextFilterDropdownBatch() {
+      if (!this._filterDropdownList || !this._filteredFilterOptions) {
+        return;
+      }
+
+      var start = this._filterDropdownRenderedCount;
+      var end = start + this._filterDropdownBatchSize;
+
+      if (start >= this._filteredFilterOptions.length) {
+        return;
+      }
+
+      var fragment = document.createDocumentFragment();
+      var that = this;
+
+      for (var i = start; i < end && i < this._filteredFilterOptions.length; i++) {
+        var opt = this._filteredFilterOptions[i];
+        var item = document.createElement("div");
+        item.className = "dropdown-item";
+
+        if (String(opt.key) === String(this._activeFilterSelectedKey)) {
+          item.className += " selected";
+        }
+
+        item.textContent = opt.text;
+        item.setAttribute("data-key", opt.key);
+
+        item.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          var selectedKeyValue = this.getAttribute("data-key");
+          that._setManageInlineFilter(that._activeFilterField, selectedKeyValue);
+          that._closeFilterDropdown();
+        });
+
+        fragment.appendChild(item);
+      }
+
+      this._filterDropdownList.appendChild(fragment);
+      this._filterDropdownRenderedCount = Math.min(end, this._filteredFilterOptions.length);
+
+      if (this._filterDropdownRenderedCount < this._filteredFilterOptions.length) {
+        if (!this._filterDropdownListMoreEl) {
+          this._filterDropdownListMoreEl = document.createElement("div");
+          this._filterDropdownListMoreEl.className = "dropdown-more";
+        }
+
+        this._filterDropdownListMoreEl.textContent =
+          "Showing " + String(this._filterDropdownRenderedCount) + " of " + String(this._filteredFilterOptions.length);
+
+        if (!this._filterDropdownListMoreEl.parentNode) {
+          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
+        } else {
+          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
+        }
+      } else {
+        if (this._filterDropdownListMoreEl && this._filterDropdownListMoreEl.parentNode) {
+          this._filterDropdownListMoreEl.parentNode.removeChild(this._filterDropdownListMoreEl);
+        }
+      }
+
+      if (this._filteredFilterOptions.length === 0) {
+        this._filterDropdownList.innerHTML = '<div class="dropdown-empty">No results found</div>';
+      }
+    }
+
     _bindEvents() {
       var that = this;
 
@@ -2093,7 +2118,64 @@
         var btnPasteExcel = this._shadowRoot.getElementById("btnPasteExcel");
         if (btnPasteExcel) {
           btnPasteExcel.addEventListener("click", function () {
-            that._openPasteOverlay();
+            that._openPastePanel();
+          });
+        }
+
+        var btnClosePastePanel = this._shadowRoot.getElementById("btnClosePastePanel");
+        if (btnClosePastePanel) {
+          btnClosePastePanel.addEventListener("click", function () {
+            that._closePastePanel();
+          });
+        }
+
+        var btnCancelPastePanel = this._shadowRoot.getElementById("btnCancelPastePanel");
+        if (btnCancelPastePanel) {
+          btnCancelPastePanel.addEventListener("click", function () {
+            that._closePastePanel();
+          });
+        }
+
+        var btnImportPastePanel = this._shadowRoot.getElementById("btnImportPastePanel");
+        if (btnImportPastePanel) {
+          btnImportPastePanel.addEventListener("click", function () {
+            that._importPastePanelRows();
+          });
+        }
+
+        var pastePanelOverlay = this._shadowRoot.getElementById("pasteModalOverlay");
+        if (pastePanelOverlay) {
+          pastePanelOverlay.addEventListener("click", function (e) {
+            if (e.target && e.target.id === "pasteModalOverlay") {
+              that._closePastePanel();
+            }
+          });
+        }
+
+        var pastePanelInput = this._shadowRoot.getElementById("pastePanelInput");
+        if (pastePanelInput) {
+          pastePanelInput.addEventListener("input", function () {
+            that._pasteBuffer = this.value || "";
+          });
+
+          pastePanelInput.addEventListener("paste", function () {
+            var area = this;
+            setTimeout(function () {
+              that._pasteBuffer = area.value || "";
+            }, 0);
+          });
+
+          pastePanelInput.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              that._closePastePanel();
+              return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+              e.preventDefault();
+              that._importPastePanelRows();
+            }
           });
         }
 
@@ -2162,13 +2244,13 @@
         if (btnLoadManage) btnLoadManage.addEventListener("click", function () { that.loadManageData(); });
 
         var btnSaveManage = this._shadowRoot.getElementById("btnSaveManage");
-        if (btnSaveManage) btnSaveManage.addEventListener("click", function () { that.saveManageData(); });
+        if (btnSaveManage) btnSaveManage.addEventListener("click", function () { that.saveManageChanges(); });
 
         var btnDeleteManage = this._shadowRoot.getElementById("btnDeleteManage");
         if (btnDeleteManage) btnDeleteManage.addEventListener("click", function () { that.deleteManageData(); });
 
         var btnClearManage = this._shadowRoot.getElementById("btnClearManage");
-        if (btnClearManage) btnClearManage.addEventListener("click", function () { that.clear(); });
+        if (btnClearManage) btnClearManage.addEventListener("click", function () { that.clearManage(); });
 
         var btnPrevPage = this._shadowRoot.getElementById("btnPrevPage");
         if (btnPrevPage) btnPrevPage.addEventListener("click", function () { that._goToPreviousPage(); });
@@ -2187,118 +2269,74 @@
 
     _bindCellEvents() {
       var that = this;
-      var allElements = this._shadowRoot.querySelectorAll("[data-row][data-field]");
+      var grid = this._shadowRoot.getElementById("tbodyVirtual");
+      if (!grid) {
+        return;
+      }
 
-      Array.prototype.forEach.call(allElements, function (el) {
-        var type = el.getAttribute("data-type");
-        var tabName = el.getAttribute("data-tab");
+      var checkboxes = grid.querySelectorAll('.row-checkbox[data-type="checkbox"]');
+      for (var i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].addEventListener("change", function () {
+          var tabName = this.getAttribute("data-tab");
+          var rowIndex = Number(this.getAttribute("data-row"));
+          var fieldName = this.getAttribute("data-field");
+          var rows = that._getRowsByTab(tabName);
 
-        if (type === "checkbox") {
-          el.addEventListener("change", function () {
-            var rowIndex = parseInt(this.getAttribute("data-row"), 10);
-            var fieldName = this.getAttribute("data-field");
-            var value = this.checked;
-            var rows = that._getRowsByTab(tabName);
+          if (!rows[rowIndex]) {
+            return;
+          }
 
-            if (!rows[rowIndex]) {
-              return;
-            }
-
-            rows[rowIndex][fieldName] = value;
+          rows[rowIndex][fieldName] = this.checked;
+          if (tabName === "manage") {
             rows[rowIndex].isModified = true;
             rows[rowIndex].rowStatus = "CHANGED";
-            that._validationErrors = [];
-            that._validationResult = "true";
-            that._widgetStatus = "CHANGED";
-            that._lastEvent = JSON.stringify({
-              type: tabName === "manage" ? "manageFieldChange" : "fieldChange",
-              tab: tabName,
-              rowIndex: rowIndex,
-              field: fieldName,
-              value: value
-            });
+          }
 
-            that._syncAll();
-            that._renderVisibleOnly();
-            that._refreshToolbarButtons();
-            that._refreshSummaryOnly();
-            that._fireSimpleEvent("onFieldChange", { tab: tabName, rowIndex: rowIndex, field: fieldName, value: value });
-            that._fireSimpleEvent("onDataChange", { activeTab: that._activeTab, rows: that._rows, manageRows: that._manageRows });
+          that._validationErrors = [];
+          that._validationResult = "true";
+          that._lastEvent = JSON.stringify({
+            type: "rowSelect",
+            tab: tabName,
+            rowIndex: rowIndex,
+            selected: this.checked
           });
-          return;
-        }
+          that._widgetStatus = "CHANGED";
+          that._syncAll();
+          that._refreshToolbarButtons();
+          that._refreshSummaryOnly();
+          that._fireSimpleEvent("onDataChange", {
+            activeTab: that._activeTab,
+            rows: that._rows,
+            manageRows: that._manageRows
+          });
+        });
+      }
 
-        if (type === "select") {
-          el.addEventListener("click", function (e) {
-            e.stopPropagation();
-            var rowIndex = parseInt(this.getAttribute("data-row"), 10);
-            var fieldName = this.getAttribute("data-field");
-            that._openDropdown(this, tabName, rowIndex, fieldName);
-          });
-
-          el.addEventListener("keydown", function (e) {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              var rowIndex = parseInt(this.getAttribute("data-row"), 10);
-              var fieldName = this.getAttribute("data-field");
-              that._openDropdown(this, tabName, rowIndex, fieldName);
-            }
-          });
-          return;
-        }
-      });
+      var triggers = grid.querySelectorAll('.dropdown-trigger[data-type="select"]');
+      for (var j = 0; j < triggers.length; j++) {
+        triggers[j].addEventListener("click", function (e) {
+          e.stopPropagation();
+          var tabName = this.getAttribute("data-tab");
+          var rowIndex = Number(this.getAttribute("data-row"));
+          var fieldName = this.getAttribute("data-field");
+          that._openDropdown(this, tabName, rowIndex, fieldName);
+        });
+      }
     }
 
     _changeTabFromUI(tabName) {
-      if (tabName !== "create" && tabName !== "manage") {
-        tabName = "create";
-      }
+      var normalizedTab = tabName === "manage" ? "manage" : "create";
+      this._activeTab = normalizedTab;
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
 
-      this._activeTab = tabName;
-      this._validationErrors = [];
-      this._validationResult = "true";
-      this._lastEvent = JSON.stringify({ type: "tabChange", activeTab: tabName });
-      this._widgetStatus = "READY";
-
-      if (tabName === "manage") {
+      if (normalizedTab === "manage") {
         this._rebuildManageFilteredIndexes();
       }
 
       this._syncAll();
       this._refreshTable();
-      this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, rows: this._rows, manageRows: this._manageRows });
-    }
-
-    _fireSimpleEvent(name, detail) {
-      this.dispatchEvent(new CustomEvent(name, { detail: detail }));
-    }
-
-    _firePropertiesChanged() {
-      this.dispatchEvent(new CustomEvent("propertiesChanged", {
-        detail: {
-          properties: {
-            rows: JSON.stringify(this._rows),
-            managedata: JSON.stringify(this._manageRows),
-            activetab: this._activeTab,
-            lastEvent: this._lastEvent,
-            validationResult: this._validationResult,
-            validationErrors: JSON.stringify(this._validationErrors || []),
-            savePayload: JSON.stringify(this._savePayload || []),
-            rowCount: this.getRowCount(),
-            selectedRowCount: this.getSelectedRowCount(),
-            widgetStatus: this._widgetStatus,
-            manageGlAccountFilter: JSON.stringify(this._manageGlAccountFilter || []),
-            manageCostCenterFilter: JSON.stringify(this._manageCostCenterFilter || []),
-            manageProfitCenterFilter: JSON.stringify(this._manageProfitCenterFilter || []),
-            manageSegmentFilter: JSON.stringify(this._manageSegmentFilter || []),
-            manageSnapshotFilter: JSON.stringify(this._manageSnapshotFilter || [])
-          }
-        }
-      }));
-    }
-
-    _syncAll() {
-      this._firePropertiesChanged();
+      this._fireSimpleEvent("onTabChange", { activeTab: this._activeTab });
     }
 
     addRow() {
@@ -2307,6 +2345,8 @@
       }
 
       this._rows.push(this._createEmptyRow("NEW"));
+      this._validationErrors = [];
+      this._validationResult = "true";
       this._widgetStatus = "CHANGED";
       this._lastEvent = JSON.stringify({ type: "addRow", tab: "create" });
       this._syncAll();
@@ -2319,56 +2359,30 @@
         return;
       }
 
-      var copiedRows = [];
-      var copiedOptions = [];
-      var i = 0;
-
-      for (i = 0; i < this._rows.length; i++) {
+      var clones = [];
+      for (var i = 0; i < this._rows.length; i++) {
         if (this._rows[i].selected === true) {
-          var newRow = {
-            rowId: "ROW_" + String(this._rowSequence++),
-            selected: false,
-            isModified: true,
-            rowStatus: "NEW",
-            GLACCOUNT: this._rows[i].GLACCOUNT || "",
-            COSTCENTER: this._rows[i].COSTCENTER || "",
-            PROFITCENTER: this._rows[i].PROFITCENTER || "",
-            SEGMENT: this._rows[i].SEGMENT || "",
-            ID: "",
-            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING || "",
-            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING || "",
-            Hierarchy: this._rows[i].Hierarchy || "",
-            SNAPSHOT: this._rows[i].SNAPSHOT || ""
-          };
-
-          copiedRows.push(newRow);
-
-          if (this._rowOptions[i]) {
-            copiedOptions.push(this._cloneRowFieldOptions(this._rowOptions[i]));
-          } else {
-            copiedOptions.push(null);
-          }
+          var copy = JSON.parse(JSON.stringify(this._rows[i]));
+          copy.rowId = "ROW_" + String(this._rowSequence++);
+          copy.selected = false;
+          copy.isModified = true;
+          copy.rowStatus = "NEW";
+          clones.push(copy);
         }
       }
 
-      if (!copiedRows.length) {
+      if (clones.length === 0) {
         return;
       }
 
-      for (var j = 0; j < copiedRows.length; j++) {
-        this._updateRowId(copiedRows[j]);
-        this._rows.push(copiedRows[j]);
-
-        var newIndex = this._rows.length - 1;
-        if (copiedOptions[j]) {
-          this._rowOptions[newIndex] = copiedOptions[j];
-        }
+      for (var j = 0; j < clones.length; j++) {
+        this._rows.push(clones[j]);
       }
 
       this._validationErrors = [];
       this._validationResult = "true";
       this._widgetStatus = "CHANGED";
-      this._lastEvent = JSON.stringify({ type: "copySelectedRows", tab: "create", copiedCount: copiedRows.length });
+      this._lastEvent = JSON.stringify({ type: "copyRows", tab: "create", copiedCount: clones.length });
       this._syncAll();
       this._refreshTable();
       this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, rows: this._rows });
@@ -2379,61 +2393,25 @@
         return;
       }
 
-      var oldRows = this._rows.slice(0);
-      var remainingRows = [];
-
+      var kept = [];
+      var deleted = 0;
       for (var i = 0; i < this._rows.length; i++) {
-        if (this._rows[i].selected !== true) {
-          remainingRows.push(this._rows[i]);
+        if (this._rows[i].selected === true) {
+          deleted++;
+        } else {
+          kept.push(this._rows[i]);
         }
       }
 
-      if (!remainingRows.length) {
-        remainingRows = [this._createEmptyRow("NEW")];
-      }
-
-      this._rows = remainingRows;
-      this._normalizeAllRows(this._rows, "NEW");
-      this._rebuildRowOptionsAfterRowChange("create", oldRows, this._rows);
+      this._rows = kept.length > 0 ? kept : [this._createEmptyRow("NEW")];
+      this._cleanupRowOptions("create");
       this._validationErrors = [];
       this._validationResult = "true";
       this._widgetStatus = "CHANGED";
-      this._lastEvent = JSON.stringify({ type: "deleteSelectedRows", tab: "create" });
+      this._lastEvent = JSON.stringify({ type: "deleteRows", tab: "create", deletedCount: deleted });
       this._syncAll();
       this._refreshTable();
       this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, rows: this._rows });
-    }
-
-    clear() {
-      if (this._activeTab === "manage") {
-        this._manageRows = [];
-        this._manageRowOptions = {};
-        this._validationErrors = [];
-        this._validationResult = "true";
-        this._lastEvent = JSON.stringify({ type: "clearManage", tab: "manage" });
-        this._manageIdSearch = "";
-        this._manageHierarchyFilter = [];
-        this._manageHierarchyFilterMap = {};
-        this._manageSegmentFilter = [];
-        this._manageSegmentFilterMap = {};
-        this._manageSnapshotFilter = [];
-        this._manageSnapshotFilterMap = {};
-        this._filteredManageIndexes = [];
-        this._manageCurrentPage = 1;
-        this._widgetStatus = "READY";
-      } else {
-        this._rows = [this._createEmptyRow("NEW")];
-        this._rowOptions = {};
-        this._validationErrors = [];
-        this._validationResult = "true";
-        this._savePayload = [];
-        this._lastEvent = JSON.stringify({ type: "clear", tab: "create" });
-        this._widgetStatus = "READY";
-      }
-
-      this._syncAll();
-      this._refreshTable();
-      this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, rows: this._rows, manageRows: this._manageRows });
     }
 
     validate() {
@@ -2527,244 +2505,129 @@
         });
         this._widgetStatus = "ERROR";
         this._syncAll();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          rows: this._rows,
-          savePayload: [],
-          validationErrors: this._validationErrors
-        });
         return;
       }
 
-      var payload = [];
-
-      for (var i = 0; i < this._rows.length; i++) {
-        if (this._rows[i].selected === true) {
-          payload.push({
-            GLACCOUNT: this._rows[i].GLACCOUNT,
-            COSTCENTER: this._rows[i].COSTCENTER,
-            PROFITCENTER: this._rows[i].PROFITCENTER,
-            SEGMENT: this._rows[i].SEGMENT,
-            ID: this._rows[i].ID,
-            MANAGEMENT_SUB_MAPPING: this._rows[i].MANAGEMENT_SUB_MAPPING,
-            MANAGEMENT_MAPPING: this._rows[i].MANAGEMENT_MAPPING,
-            Hierarchy: this._rows[i].Hierarchy,
-            SNAPSHOT: this._rows[i].SNAPSHOT
-          });
-        }
-      }
-
-      if (payload.length === 0) {
-        this._savePayload = [];
-        this._validationErrors = [{
-          tab: "create",
-          rowIndex: 1,
-          field: "selected",
-          message: "Please select at least one row to save"
-        }];
-        this._validationResult = "false";
-        this._widgetStatus = "ERROR";
-        this._lastEvent = JSON.stringify({
-          type: "save",
-          tab: "create",
-          status: "NO_SELECTION",
-          payloadCount: 0
-        });
-        this._syncAll();
-        this._refreshTable();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          rows: this._rows,
-          savePayload: [],
-          validationErrors: this._validationErrors
-        });
-        return;
-      }
-
-      this._validationErrors = [];
-      this._validationResult = "true";
-      this._savePayload = payload;
+      this._savePayload = JSON.parse(JSON.stringify(this._rows));
       this._lastEvent = JSON.stringify({
         type: "save",
         tab: "create",
-        status: "READY",
-        payloadCount: payload.length
+        status: "SUCCESS",
+        rowCount: this._savePayload.length
       });
-      this._widgetStatus = "SAVE_READY";
+      this._widgetStatus = "SAVED";
       this._syncAll();
-      this._fireSimpleEvent("onDataChange", {
+      this._fireSimpleEvent("onSave", {
         activeTab: this._activeTab,
-        rows: this._rows,
-        savePayload: payload
+        savePayload: this._savePayload
       });
+    }
+
+    clear() {
+      if (this._activeTab !== "create") {
+        return;
+      }
+
+      this._rows = [this._createEmptyRow("NEW")];
+      this._rowOptions = {};
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
+      this._validationErrors = [];
+      this._validationResult = "true";
+      this._savePayload = [];
+      this._lastEvent = JSON.stringify({ type: "clear", tab: "create" });
+      this._widgetStatus = "READY";
+      this._syncAll();
+      this._refreshTable();
+      this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, rows: this._rows });
     }
 
     loadManageData() {
-      this._lastEvent = JSON.stringify({
-        type: "loadManageData",
-        tab: "manage"
-      });
-      this._widgetStatus = "READY";
+      this._lastEvent = JSON.stringify({ type: "loadManageData", tab: "manage" });
+      this._widgetStatus = "LOADED";
       this._syncAll();
-      this._fireSimpleEvent("onDataChange", {
-        activeTab: this._activeTab,
-        manageRows: this._manageRows
-      });
+      this._fireSimpleEvent("onLoadManageData", { activeTab: this._activeTab });
     }
 
-    saveManageData() {
-      if (this._activeTab !== "manage") {
-        return;
-      }
-
-      var payload = [];
-      var visibleIndexes = this._getManagePagedIndexes();
-
-      for (var x = 0; x < visibleIndexes.length; x++) {
-        var i = visibleIndexes[x];
-        if (this._manageRows[i].selected === true) {
-          payload.push({
-            GLACCOUNT: this._manageRows[i].GLACCOUNT,
-            COSTCENTER: this._manageRows[i].COSTCENTER,
-            PROFITCENTER: this._manageRows[i].PROFITCENTER,
-            SEGMENT: this._manageRows[i].SEGMENT,
-            ID: this._manageRows[i].ID,
-            MANAGEMENT_SUB_MAPPING: this._manageRows[i].MANAGEMENT_SUB_MAPPING,
-            MANAGEMENT_MAPPING: this._manageRows[i].MANAGEMENT_MAPPING,
-            Hierarchy: this._manageRows[i].Hierarchy,
-            SNAPSHOT: this._manageRows[i].SNAPSHOT,
-            rowStatus: this._manageRows[i].rowStatus || "CHANGED"
-          });
-        }
-      }
-
-      if (payload.length === 0) {
-        this._savePayload = [];
-        this._validationErrors = [{
-          tab: "manage",
-          rowIndex: 1,
-          field: "selected",
-          message: "Please select at least one row to save"
-        }];
-        this._validationResult = "false";
-        this._widgetStatus = "ERROR";
-        this._lastEvent = JSON.stringify({
-          type: "saveManageData",
-          tab: "manage",
-          status: "NO_SELECTION",
-          payloadCount: 0
-        });
-        this._syncAll();
-        this._renderVisibleOnly();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          manageRows: this._manageRows,
-          savePayload: []
-        });
-        return;
-      }
-
-      this._validationErrors = [];
-      this._validationResult = "true";
-      this._savePayload = payload;
-      this._widgetStatus = "SAVE_READY";
+    saveManageChanges() {
+      this._savePayload = JSON.parse(JSON.stringify(this._manageRows));
       this._lastEvent = JSON.stringify({
-        type: "saveManageData",
+        type: "saveManageChanges",
         tab: "manage",
-        status: "READY",
-        payloadCount: payload.length
+        rowCount: this._savePayload.length
       });
+      this._widgetStatus = "SAVED";
       this._syncAll();
-      this._fireSimpleEvent("onDataChange", {
+      this._fireSimpleEvent("onSaveManage", {
         activeTab: this._activeTab,
-        manageRows: this._manageRows,
-        savePayload: payload
+        savePayload: this._savePayload
       });
     }
 
     deleteManageData() {
-      if (this._activeTab !== "manage") {
-        return;
-      }
-
-      var payload = [];
       var visibleIndexes = this._getManagePagedIndexes();
+      var deleteMap = {};
+      var i = 0;
 
-      for (var x = 0; x < visibleIndexes.length; x++) {
-        var i = visibleIndexes[x];
-        if (this._manageRows[i].selected === true) {
-          payload.push({
-            GLACCOUNT: this._manageRows[i].GLACCOUNT,
-            COSTCENTER: this._manageRows[i].COSTCENTER,
-            PROFITCENTER: this._manageRows[i].PROFITCENTER,
-            SEGMENT: this._manageRows[i].SEGMENT,
-            ID: this._manageRows[i].ID,
-            MANAGEMENT_SUB_MAPPING: this._manageRows[i].MANAGEMENT_SUB_MAPPING,
-            MANAGEMENT_MAPPING: this._manageRows[i].MANAGEMENT_MAPPING,
-            Hierarchy: this._manageRows[i].Hierarchy,
-            SNAPSHOT: this._manageRows[i].SNAPSHOT,
-            rowStatus: "DELETE"
-          });
+      for (i = 0; i < visibleIndexes.length; i++) {
+        var idx = visibleIndexes[i];
+        if (this._manageRows[idx] && this._manageRows[idx].selected === true) {
+          deleteMap[idx] = true;
         }
       }
 
-      if (payload.length === 0) {
-        this._savePayload = [];
-        this._validationErrors = [{
-          tab: "manage",
-          rowIndex: 1,
-          field: "selected",
-          message: "Please select at least one row to delete"
-        }];
-        this._validationResult = "false";
-        this._widgetStatus = "ERROR";
-        this._lastEvent = JSON.stringify({
-          type: "deleteManageData",
-          tab: "manage",
-          status: "NO_SELECTION",
-          payloadCount: 0
-        });
-        this._syncAll();
-        this._renderVisibleOnly();
-        this._fireSimpleEvent("onDataChange", {
-          activeTab: this._activeTab,
-          manageRows: this._manageRows,
-          savePayload: []
-        });
-        return;
+      var kept = [];
+      var deletedCount = 0;
+      for (i = 0; i < this._manageRows.length; i++) {
+        if (deleteMap[i] === true) {
+          deletedCount++;
+        } else {
+          kept.push(this._manageRows[i]);
+        }
       }
 
-      this._validationErrors = [];
-      this._validationResult = "true";
-      this._savePayload = payload;
-      this._widgetStatus = "SAVE_READY";
+      this._manageRows = kept;
+      this._cleanupRowOptions("manage");
+      this._rebuildManageFilteredIndexes();
       this._lastEvent = JSON.stringify({
-        type: "deleteManageData",
+        type: "deleteManageRows",
         tab: "manage",
-        status: "READY",
-        payloadCount: payload.length
+        deletedCount: deletedCount
       });
+      this._widgetStatus = "CHANGED";
       this._syncAll();
-      this._fireSimpleEvent("onDataChange", {
-        activeTab: this._activeTab,
-        manageRows: this._manageRows,
-        savePayload: payload
-      });
+      this._refreshTable();
+      this._fireSimpleEvent("onDataChange", { activeTab: this._activeTab, manageRows: this._manageRows });
     }
 
-    getRows() {
-      return JSON.stringify(this._rows || []);
+    clearManage() {
+      this._manageIdSearch = "";
+      this._manageSegmentFilter = [];
+      this._manageHierarchyFilter = [];
+      this._manageSnapshotFilter = [];
+      this._manageSegmentFilterMap = {};
+      this._manageHierarchyFilterMap = {};
+      this._manageSnapshotFilterMap = {};
+      this._manageCurrentPage = 1;
+      this._rebuildManageFilteredIndexes();
+      this._lastEvent = JSON.stringify({ type: "clearManage", tab: "manage" });
+      this._widgetStatus = "READY";
+      this._syncAll();
+      this._refreshTable();
     }
 
     setRows(rowsJson) {
       var oldRows = this._rows.slice(0);
-
       try {
         this._rows = JSON.parse(rowsJson || "[]");
-        if (!Array.isArray(this._rows) || this._rows.length === 0) {
-          this._rows = [this._createEmptyRow("NEW")];
+        if (!Array.isArray(this._rows)) {
+          this._rows = [];
         }
       } catch (e) {
+        this._rows = [];
+      }
+
+      if (this._rows.length === 0) {
         this._rows = [this._createEmptyRow("NEW")];
       }
 
@@ -2774,10 +2637,6 @@
       this._widgetStatus = "LOADED";
       this._syncAll();
       this._refreshTable();
-    }
-
-    getManageData() {
-      return JSON.stringify(this._manageRows || []);
     }
 
     setManageData(rowsJson) {
@@ -2804,6 +2663,8 @@
     setActiveTab(tabName) {
       var normalizedTab = tabName === "manage" ? "manage" : "create";
       this._activeTab = normalizedTab;
+      this._pastePanelOpen = false;
+      this._pasteBuffer = "";
       if (normalizedTab === "manage") {
         this._rebuildManageFilteredIndexes();
       }
@@ -2821,7 +2682,9 @@
         var rows = this._getActiveRows();
         var count = 0;
         for (var i = 0; i < rows.length; i++) {
-          if (rows[i].selected === true) { count++; }
+          if (rows[i].selected === true) {
+            count++;
+          }
         }
         return count;
       }
@@ -3190,203 +3053,11 @@
         this._refreshTable();
       }
     }
-
-    setManageIdSearch(value) {
-      this._manageIdSearch = this._safeString(value);
-      this._manageCurrentPage = 1;
-      this._rebuildManageFilteredIndexes();
-      this._renderVisibleOnly();
-    }
-
-    setRowFieldOptions(rowIndex, fieldName, json) {
-      var index = parseInt(rowIndex, 10);
-      if (isNaN(index) || index < 0) {
-        return;
-      }
-
-      var field = this._safeString(fieldName);
-      if (!field) {
-        return;
-      }
-
-      var parsed = this._parseOptions(json);
-      this._setRowOptionsForField("create", index, field, parsed);
-
-      if (this._rows[index]) {
-        var currentValue = this._safeString(this._rows[index][field]);
-        var keepValue = false;
-
-        for (var i = 0; i < parsed.length; i++) {
-          if (String(parsed[i].key) === currentValue) {
-            keepValue = true;
-            break;
-          }
-        }
-
-        if (currentValue !== "" && keepValue === false) {
-          this._rows[index][field] = "";
-          if (field !== "ID") {
-            this._rows[index].isModified = true;
-            this._rows[index].rowStatus = "CHANGED";
-            this._updateRowId(this._rows[index]);
-          }
-        }
-      }
-
-      this._syncAll();
-      this._refreshTable();
-    }
-
-    setManageRowFieldOptions(rowIndex, fieldName, json) {
-      var index = parseInt(rowIndex, 10);
-      if (isNaN(index) || index < 0) {
-        return;
-      }
-
-      var field = this._safeString(fieldName);
-      if (!field) {
-        return;
-      }
-
-      var parsed = this._parseOptions(json);
-      this._setRowOptionsForField("manage", index, field, parsed);
-
-      this._syncAll();
-      this._renderVisibleOnly();
-      this._refreshSummaryOnly();
-    }
-
-    setVisible(flag) {
-      this.style.display = flag ? "block" : "none";
-    }
   }
 
-  if (!customElements.get("com-company-managementwidget")) {
-    customElements.define("com-company-managementwidget", ProjectEntryWidget);
-  }
-
-  (function () {
-    if (document.getElementById("project-widget-dropdown-global-style")) {
-      return;
-    }
-
-    var globalStyleEl = document.createElement("style");
-    globalStyleEl.id = "project-widget-dropdown-global-style";
-    globalStyleEl.textContent =
-      '.project-widget-dropdown-panel {' +
-        'background:#ffffff;' +
-        'border:1px solid #cfd9e3;' +
-        'border-radius:10px;' +
-        'box-shadow:0 12px 28px rgba(34,53,72,0.18);' +
-        'overflow:hidden;' +
-        'min-width:220px;' +
-        'max-width:460px;' +
-        'max-height:380px;' +
-        'z-index:999999;' +
-        'font-family:"72", Arial, sans-serif;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-topbar {' +
-        'display:flex;' +
-        'align-items:center;' +
-        'gap:8px;' +
-        'padding:8px 8px 0 8px;' +
-        'background:#ffffff;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-search-wrap {' +
-        'padding:0;' +
-        'border-bottom:none;' +
-        'background:#ffffff;' +
-        'flex:1 1 auto;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-search-input {' +
-        'width:100%;' +
-        'height:32px;' +
-        'border:1px solid #b9cae0;' +
-        'border-radius:6px;' +
-        'padding:0 10px;' +
-        'box-sizing:border-box;' +
-        'font-size:13px;' +
-        'outline:none;' +
-        'color:#223548;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-search-input:focus {' +
-        'border-color:#0a6ed1;' +
-        'box-shadow:0 0 0 2px rgba(10,110,209,0.12);' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-close-btn {' +
-        'width:32px;' +
-        'height:32px;' +
-        'border:1px solid #b9cae0;' +
-        'border-radius:6px;' +
-        'background:#ffffff;' +
-        'color:#5f6f82;' +
-        'font-size:18px;' +
-        'line-height:1;' +
-        'cursor:pointer;' +
-        'flex:0 0 auto;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-close-btn:hover {' +
-        'background:#f3f8fd;' +
-        'color:#223548;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-actions {' +
-        'padding:6px 8px;' +
-        'border-bottom:1px solid #e8eef5;' +
-        'background:#ffffff;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-clear-btn {' +
-        'width:100%;' +
-        'height:28px;' +
-        'border:1px solid #c7d7ea;' +
-        'border-radius:6px;' +
-        'background:#ffffff;' +
-        'color:#0a6ed1;' +
-        'font-size:12px;' +
-        'font-weight:600;' +
-        'cursor:pointer;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-clear-btn:hover {' +
-        'background:#f3f8fd;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-list {' +
-        'max-height:240px;' +
-        'overflow:auto;' +
-        'background:#ffffff;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-item {' +
-        'padding:9px 10px;' +
-        'font-size:13px;' +
-        'color:#223548;' +
-        'cursor:pointer;' +
-        'border-bottom:1px solid #f3f6f9;' +
-        'line-height:1.35;' +
-        'word-break:break-word;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-item:hover {' +
-        'background:#edf5ff;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-item.selected {' +
-        'background:#e8f2ff;' +
-        'color:#0a6ed1;' +
-        'font-weight:600;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-empty {' +
-        'padding:12px;' +
-        'color:#7b8a9a;' +
-        'text-align:center;' +
-        'font-size:13px;' +
-      '}' +
-      '.project-widget-dropdown-panel .dropdown-more {' +
-        'padding:6px 10px;' +
-        'font-size:12px;' +
-        'color:#6b7c8f;' +
-        'text-align:center;' +
-        'background:#fafcff;' +
-        'border-top:1px solid #eef3f8;' +
-      '}';
-    document.head.appendChild(globalStyleEl);
-  })();
+  customElements.define("project-entry-widget", ProjectEntryWidget);
 })();
+
 
 
 
