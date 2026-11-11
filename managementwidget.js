@@ -1,4 +1,3 @@
-/*
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -34,16 +33,14 @@
       this._manageProfitCenterFilter = [];
       this._manageSegmentFilter = [];
       this._manageSnapshotFilter = [];
-      this._manageSubMappingFilter = [];
-      this._manageMappingFilter = [];
+      this._manageHierarchyFilter = [];
 
       this._manageGlAccountFilterMap = {};
       this._manageCostCenterFilterMap = {};
       this._manageProfitCenterFilterMap = {};
       this._manageSegmentFilterMap = {};
       this._manageSnapshotFilterMap = {};
-      this._manageSubMappingFilterMap = {};
-      this._manageMappingFilterMap = {};
+      this._manageHierarchyFilterMap = {};
 
       this._manageIdSearch = "";
       this._manageIdSearchTimer = null;
@@ -69,6 +66,22 @@
       this._dropdownRenderedCount = 0;
       this._dropdownSearchTimer = null;
       this._dropdownListMoreEl = null;
+
+      this._filterDropdownPanel = null;
+      this._filterDropdownSearch = null;
+      this._filterDropdownList = null;
+      this._filterDropdownCloseBtn = null;
+      this._filterDropdownClearBtn = null;
+      this._filterDropdownOpen = false;
+      this._activeFilterTrigger = null;
+      this._activeFilterField = "";
+      this._activeFilterOptions = [];
+      this._activeFilterSelectedKey = "";
+      this._filteredFilterOptions = [];
+      this._filterDropdownRenderedCount = 0;
+      this._filterDropdownBatchSize = 100;
+      this._filterDropdownSearchTimer = null;
+      this._filterDropdownListMoreEl = null;
 
       this._createColumns = [
         { key: "selected", label: "Sel", type: "checkbox", width: "70px" },
@@ -105,6 +118,7 @@
       }
 
       this._createDropdownPanel();
+      this._createFilterDropdownPanel();
       this._normalizeAllRows(this._rows, "NEW");
       this._normalizeAllRows(this._manageRows, "LOADED");
       this._cleanupRowOptions("create");
@@ -117,13 +131,22 @@
 
     disconnectedCallback() {
       this._closeDropdown();
+      this._closeFilterDropdown();
 
       if (this._dropdownPanel && this._dropdownPanel.parentNode) {
         this._dropdownPanel.parentNode.removeChild(this._dropdownPanel);
       }
 
+      if (this._filterDropdownPanel && this._filterDropdownPanel.parentNode) {
+        this._filterDropdownPanel.parentNode.removeChild(this._filterDropdownPanel);
+      }
+
       if (this._documentClickHandler) {
         document.removeEventListener("click", this._documentClickHandler);
+      }
+
+      if (this._filterDocumentClickHandler) {
+        document.removeEventListener("click", this._filterDocumentClickHandler);
       }
 
       if (this._manageIdSearchTimer) {
@@ -132,6 +155,7 @@
       }
 
       this._dropdownPanel = null;
+      this._filterDropdownPanel = null;
     }
 
     static get observedAttributes() {
@@ -523,6 +547,75 @@
       row.ID = parts.join("-");
     }
 
+    _buildUniqueManageFilterOptions(fieldName) {
+      var sourceMap = {};
+      var arr = [];
+      var i = 0;
+      var value = "";
+
+      for (i = 0; i < this._manageRows.length; i++) {
+        value = this._safeString(this._manageRows[i][fieldName]);
+        if (value !== "" && sourceMap[value] !== true) {
+          sourceMap[value] = true;
+          arr.push({
+            key: value,
+            text: value,
+            searchText: (value + " " + value).toLowerCase()
+          });
+        }
+      }
+
+      arr.sort(function (a, b) {
+        if (a.text < b.text) return -1;
+        if (a.text > b.text) return 1;
+        return 0;
+      });
+
+      return arr;
+    }
+
+    _getManageFilterOptions(fieldName) {
+      return this._buildUniqueManageFilterOptions(fieldName);
+    }
+
+    _getManageFilterCurrentValue(fieldName) {
+      if (fieldName === "SEGMENT") {
+        if (this._manageSegmentFilter.length > 0) return this._manageSegmentFilter[0];
+      }
+      if (fieldName === "Hierarchy") {
+        if (this._manageHierarchyFilter.length > 0) return this._manageHierarchyFilter[0];
+      }
+      if (fieldName === "SNAPSHOT") {
+        if (this._manageSnapshotFilter.length > 0) return this._manageSnapshotFilter[0];
+      }
+      return "";
+    }
+
+    _setManageInlineFilter(fieldName, value) {
+      var cleanValue = this._safeString(value);
+
+      if (fieldName === "SEGMENT") {
+        this._manageSegmentFilter = cleanValue === "" ? [] : [cleanValue];
+        this._manageSegmentFilterMap = this._buildFilterMap(this._manageSegmentFilter);
+      }
+
+      if (fieldName === "Hierarchy") {
+        this._manageHierarchyFilter = cleanValue === "" ? [] : [cleanValue];
+        this._manageHierarchyFilterMap = this._buildFilterMap(this._manageHierarchyFilter);
+      }
+
+      if (fieldName === "SNAPSHOT") {
+        this._manageSnapshotFilter = cleanValue === "" ? [] : [cleanValue];
+        this._manageSnapshotFilterMap = this._buildFilterMap(this._manageSnapshotFilter);
+      }
+
+      this._manageCurrentPage = 1;
+      this._rebuildManageFilteredIndexes();
+      this._syncAll();
+      this._renderVisibleOnly();
+      this._refreshSummaryOnly();
+    }
+
     _render() {
       this._shadowRoot.innerHTML = `
         <style>
@@ -535,6 +628,71 @@
           .toolbarWrap { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px; border-bottom:1px solid #e5edf7; background:#f8fbff; flex-wrap:wrap; }
           .toolbarLeft { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
           .toolbarRight { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-left:auto; }
+
+          .manageTopbar {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-end;
+            gap:12px;
+            padding:10px 12px;
+            border-bottom:1px solid #e5edf7;
+            background:#ffffff;
+            flex-wrap:wrap;
+            position:sticky;
+            top:0;
+            z-index:4;
+          }
+
+          .manageFilters {
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            align-items:flex-end;
+          }
+
+          .filterCard {
+            min-width:180px;
+            display:flex;
+            flex-direction:column;
+            gap:4px;
+          }
+
+          .filterCardLabel {
+            font-size:11px;
+            font-weight:700;
+            color:#5d7288;
+            letter-spacing:0.2px;
+          }
+
+          .filterTrigger {
+            width:100%;
+            height:34px;
+            border:1px solid #c9d6e5;
+            border-radius:8px;
+            background:#fff;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            box-sizing:border-box;
+            padding:0 10px;
+            cursor:pointer;
+            font-size:13px;
+            color:#223548;
+            user-select:none;
+          }
+
+          .filterTrigger .label {
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            padding-right:8px;
+          }
+
+          .filterTrigger .arrow {
+            color:#6a7f94;
+            font-size:11px;
+            flex:0 0 auto;
+          }
 
           .searchBox {
             width:260px;
@@ -554,54 +712,41 @@
             box-shadow:0 0 0 2px rgba(10,110,209,0.12);
           }
 
-          .filterBar {
-            display:grid;
-            grid-template-columns: repeat(7, minmax(140px, 1fr));
-            gap:8px;
-            padding:10px 12px;
-            border-bottom:1px solid #e5edf7;
-            background:#ffffff;
-            position:sticky;
-            top:0;
-            z-index:3;
-          }
-
-          .filterItem {
-            display:flex;
-            flex-direction:column;
-            gap:4px;
-            min-width:0;
-          }
-
-          .filterLabel {
-            font-size:11px;
-            font-weight:700;
-            color:#5f7083;
-            line-height:1.2;
-          }
-
-          .filterSelect {
-            width:100%;
-            height:32px;
-            border:1px solid #c7d7ea;
-            border-radius:6px;
-            background:#ffffff;
-            color:#223548;
-            font-size:12px;
-            padding:0 8px;
-            box-sizing:border-box;
-            outline:none;
-          }
-
-          .filterSelect:focus {
-            border-color:#0a6ed1;
-            box-shadow:0 0 0 2px rgba(10,110,209,0.12);
-          }
-
           .btn { border:1px solid #c7d7ea; background:#ffffff; color:#0a6ed1; border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; }
           .btn:hover { background:#f3f8fd; }
           .btn.primary { background:#0a6ed1; color:#ffffff; border-color:#0a6ed1; }
           .btn.danger { color:#bb1e1e; border-color:#efb4b4; background:#fff7f7; }
+
+          .pasteBanner {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:12px;
+            padding:10px 12px;
+            border-bottom:1px solid #e5edf7;
+            background:linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%);
+            flex-wrap:wrap;
+          }
+
+          .pasteHint {
+            font-size:12px;
+            color:#5f7083;
+            line-height:1.4;
+          }
+
+          .pasteHint strong {
+            color:#223548;
+          }
+
+          .pasteTextarea {
+            position:absolute !important;
+            left:-9999px !important;
+            top:-9999px !important;
+            width:1px !important;
+            height:1px !important;
+            opacity:0 !important;
+            pointer-events:none !important;
+          }
 
           .gridWrap { overflow:auto; max-height:520px; background:#ffffff; }
           table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
@@ -662,20 +807,6 @@
             background:#fff5f5;
           }
 
-          .pasteZone {
-            margin:10px 12px 0 12px;
-            padding:10px 12px;
-            border:1px dashed #b7c9de;
-            border-radius:10px;
-            background:#f9fbfe;
-            color:#4d6277;
-            font-size:12px;
-          }
-
-          .pasteZone strong {
-            color:#223548;
-          }
-
           .rowErr { margin-top:4px; font-size:11px; color:#c53030; white-space:normal; max-width:240px; line-height:1.3; }
           .summary { padding:10px 12px; border-top:1px solid #e5edf7; display:flex; gap:18px; font-size:12px; background:#fafcff; flex-wrap:wrap; }
           .row-checkbox { width:22px; height:22px; cursor:pointer; margin-top:8px; }
@@ -691,64 +822,6 @@
 
     _getActiveRows() {
       return this._activeTab === "manage" ? this._manageRows : this._rows;
-    }
-
-    _buildUniqueFieldOptionsFromManage(fieldName) {
-      var map = {};
-      var arr = [];
-      var i = 0;
-
-      for (i = 0; i < this._manageRows.length; i++) {
-        var value = this._safeString(this._manageRows[i][fieldName]);
-        if (value !== "" && map[value] !== true) {
-          map[value] = true;
-          arr.push({
-            key: value,
-            text: value,
-            searchText: (value + " " + value).toLowerCase()
-          });
-        }
-      }
-
-      arr.sort(function (a, b) {
-        if (a.text < b.text) return -1;
-        if (a.text > b.text) return 1;
-        return 0;
-      });
-
-      return arr;
-    }
-
-    _renderManageFilterOptions(fieldName, selectedValue) {
-      var options = [];
-      var html = '<option value="">All</option>';
-      var i = 0;
-
-      if (fieldName === "GLACCOUNT") {
-        options = this._buildUniqueFieldOptionsFromManage("GLACCOUNT");
-      } else if (fieldName === "COSTCENTER") {
-        options = this._buildUniqueFieldOptionsFromManage("COSTCENTER");
-      } else if (fieldName === "PROFITCENTER") {
-        options = this._buildUniqueFieldOptionsFromManage("PROFITCENTER");
-      } else if (fieldName === "SEGMENT") {
-        options = this._buildUniqueFieldOptionsFromManage("SEGMENT");
-      } else if (fieldName === "SNAPSHOT") {
-        options = this._buildUniqueFieldOptionsFromManage("SNAPSHOT");
-      } else if (fieldName === "MANAGEMENT_SUB_MAPPING") {
-        options = this._buildUniqueFieldOptionsFromManage("MANAGEMENT_SUB_MAPPING");
-      } else if (fieldName === "MANAGEMENT_MAPPING") {
-        options = this._buildUniqueFieldOptionsFromManage("MANAGEMENT_MAPPING");
-      }
-
-      for (i = 0; i < options.length; i++) {
-        var selectedAttr = "";
-        if (this._safeString(selectedValue) === this._safeString(options[i].key)) {
-          selectedAttr = ' selected';
-        }
-        html += '<option value="' + this._escape(options[i].key) + '"' + selectedAttr + '>' + this._escape(options[i].text) + '</option>';
-      }
-
-      return html;
     }
 
     _hasSelectedRows(tabName) {
@@ -891,11 +964,7 @@
         return false;
       }
 
-      if (!this._isValueInFilterMap(this._manageSubMappingFilter, this._manageSubMappingFilterMap, rowData.MANAGEMENT_SUB_MAPPING)) {
-        return false;
-      }
-
-      if (!this._isValueInFilterMap(this._manageMappingFilter, this._manageMappingFilterMap, rowData.MANAGEMENT_MAPPING)) {
+      if (!this._isValueInFilterMap(this._manageHierarchyFilter, this._manageHierarchyFilterMap, rowData.Hierarchy)) {
         return false;
       }
 
@@ -967,8 +1036,8 @@
         return;
       }
 
-      var rawText = this._safeString(text);
-      if (rawText === "") {
+      var rawText = String(text || "");
+      if (!rawText) {
         return;
       }
 
@@ -978,7 +1047,12 @@
       var i = 0;
 
       for (i = 0; i < lines.length; i++) {
-        var line = this._safeString(lines[i]);
+        var line = lines[i];
+        if (line === undefined || line === null) {
+          continue;
+        }
+
+        line = String(line).trim();
         if (line === "") {
           continue;
         }
@@ -1001,6 +1075,19 @@
         row.selected = false;
         row.isModified = true;
         row.rowStatus = "NEW";
+
+        if (
+          row.GLACCOUNT === "" &&
+          row.COSTCENTER === "" &&
+          row.PROFITCENTER === "" &&
+          row.SEGMENT === "" &&
+          row.MANAGEMENT_SUB_MAPPING === "" &&
+          row.MANAGEMENT_MAPPING === "" &&
+          row.Hierarchy === "" &&
+          row.SNAPSHOT === ""
+        ) {
+          continue;
+        }
 
         this._updateRowId(row);
         this._rows.push(row);
@@ -1192,6 +1279,7 @@
           html += '<button class="btn danger" id="btnDelete">Delete Selected</button>';
         }
 
+        html += '<button class="btn" id="btnPasteExcel">Paste from Excel</button>';
         html += '<button class="btn" id="btnValidate">Validate</button>';
         html += '<button class="btn primary" id="btnSave">Save</button>';
         html += '<button class="btn" id="btnClear">Clear</button>';
@@ -1216,18 +1304,32 @@
       html += '</div>';
 
       if (this._activeTab === "create") {
-        html += '<div class="pasteZone" id="pasteZone"><strong>Excel Paste:</strong> Copy rows from Excel in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click anywhere inside the widget and press Ctrl+V.</div>';
+        html += '<div class="pasteBanner">';
+        html += '<div class="pasteHint"><strong>Excel Paste Ready:</strong> Copy rows in this order: GLACCOUNT, COSTCENTER, PROFITCENTER, SEGMENT, MANAGEMENT_SUB_MAPPING, MANAGEMENT_MAPPING, Hierarchy, SNAPSHOT. Then click <strong>Paste from Excel</strong> and paste.</div>';
+        html += '<textarea id="pasteCaptureArea" class="pasteTextarea"></textarea>';
+        html += '</div>';
       }
 
       if (this._activeTab === "manage") {
-        html += '<div class="filterBar">';
-        html += '<div class="filterItem"><div class="filterLabel">GLACCOUNT</div><select class="filterSelect" id="filterGlAccount">' + this._renderManageFilterOptions("GLACCOUNT", this._manageGlAccountFilter.length ? this._manageGlAccountFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">COSTCENTER</div><select class="filterSelect" id="filterCostCenter">' + this._renderManageFilterOptions("COSTCENTER", this._manageCostCenterFilter.length ? this._manageCostCenterFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">PROFITCENTER</div><select class="filterSelect" id="filterProfitCenter">' + this._renderManageFilterOptions("PROFITCENTER", this._manageProfitCenterFilter.length ? this._manageProfitCenterFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">SEGMENT</div><select class="filterSelect" id="filterSegment">' + this._renderManageFilterOptions("SEGMENT", this._manageSegmentFilter.length ? this._manageSegmentFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">SNAPSHOT</div><select class="filterSelect" id="filterSnapshot">' + this._renderManageFilterOptions("SNAPSHOT", this._manageSnapshotFilter.length ? this._manageSnapshotFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">SUB-MAPPING</div><select class="filterSelect" id="filterSubMapping">' + this._renderManageFilterOptions("MANAGEMENT_SUB_MAPPING", this._manageSubMappingFilter.length ? this._manageSubMappingFilter[0] : "") + '</select></div>';
-        html += '<div class="filterItem"><div class="filterLabel">MAPPING</div><select class="filterSelect" id="filterMapping">' + this._renderManageFilterOptions("MANAGEMENT_MAPPING", this._manageMappingFilter.length ? this._manageMappingFilter[0] : "") + '</select></div>';
+        html += '<div class="manageTopbar">';
+        html += '<div class="manageFilters">';
+        html += '<div class="filterCard">';
+        html += '<div class="filterCardLabel">SEGMENT</div>';
+        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSegment" data-filter-field="SEGMENT">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SEGMENT") || "All") + '</span><span class="arrow">▼</span></div>';
+        html += '</div>';
+
+        html += '<div class="filterCard">';
+        html += '<div class="filterCardLabel">HIERARCHY</div>';
+        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerHierarchy" data-filter-field="Hierarchy">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("Hierarchy") || "All") + '</span><span class="arrow">▼</span></div>';
+        html += '</div>';
+
+        html += '<div class="filterCard">';
+        html += '<div class="filterCardLabel">SNAPSHOT</div>';
+        html += '<div class="filterTrigger" tabindex="0" id="filterTriggerSnapshot" data-filter-field="SNAPSHOT">';
+        html += '<span class="label">' + this._escape(this._getManageFilterCurrentValue("SNAPSHOT") || "All") + '</span><span class="arrow">▼</span></div>';
+        html += '</div>';
         html += '</div>';
 
         html += '<div class="pager">';
@@ -1239,6 +1341,7 @@
         html += '<button class="btn" id="btnPrevPage">Previous</button>';
         html += '<span class="muted" id="pageInfo">Page ' + this._manageCurrentPage + ' of ' + this._getManageTotalPages() + '</span>';
         html += '<button class="btn" id="btnNextPage">Next</button>';
+        html += '</div>';
         html += '</div>';
       }
 
@@ -1507,19 +1610,269 @@
       });
 
       this._documentClickHandler = function (e) {
-        if (!that._dropdownOpen) {
+        if (!that._dropdownOpen && !that._filterDropdownOpen) {
           return;
         }
 
         var insidePanel = that._dropdownPanel && that._dropdownPanel.contains(e.target);
         var insideTrigger = that._activeDropdownTrigger && that._activeDropdownTrigger.contains(e.target);
 
-        if (!insidePanel && !insideTrigger) {
+        if (!insidePanel && !insideTrigger && that._dropdownOpen) {
           that._closeDropdown();
         }
       };
 
       document.addEventListener("click", this._documentClickHandler);
+    }
+
+    _createFilterDropdownPanel() {
+      if (this._filterDropdownPanel) {
+        return;
+      }
+
+      var panel = document.createElement("div");
+      panel.className = "project-widget-dropdown-panel";
+      panel.style.display = "none";
+
+      panel.innerHTML =
+        '<div class="dropdown-topbar">' +
+          '<div class="dropdown-search-wrap">' +
+            '<input type="text" class="dropdown-search-input" placeholder="Search filter..." />' +
+          '</div>' +
+          '<button type="button" class="dropdown-close-btn" title="Close">×</button>' +
+        '</div>' +
+        '<div class="dropdown-actions">' +
+          '<button type="button" class="dropdown-clear-btn">Clear filter</button>' +
+        '</div>' +
+        '<div class="dropdown-list"></div>';
+
+      document.body.appendChild(panel);
+
+      this._filterDropdownPanel = panel;
+      this._filterDropdownSearch = panel.querySelector(".dropdown-search-input");
+      this._filterDropdownList = panel.querySelector(".dropdown-list");
+      this._filterDropdownCloseBtn = panel.querySelector(".dropdown-close-btn");
+      this._filterDropdownClearBtn = panel.querySelector(".dropdown-clear-btn");
+
+      var that = this;
+
+      this._filterDropdownCloseBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        that._closeFilterDropdown();
+      });
+
+      this._filterDropdownClearBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        that._setManageInlineFilter(that._activeFilterField, "");
+        that._closeFilterDropdown();
+        that._refreshTable();
+      });
+
+      this._filterDropdownSearch.addEventListener("input", function () {
+        if (that._filterDropdownSearchTimer) {
+          clearTimeout(that._filterDropdownSearchTimer);
+        }
+
+        that._filterDropdownSearchTimer = setTimeout(function () {
+          that._applyFilterDropdownSearch(that._filterDropdownSearch.value);
+        }, 120);
+      });
+
+      this._filterDropdownList.addEventListener("scroll", function () {
+        var nearBottom = that._filterDropdownList.scrollTop + that._filterDropdownList.clientHeight >= that._filterDropdownList.scrollHeight - 30;
+        if (nearBottom) {
+          that._appendNextFilterDropdownBatch();
+        }
+      });
+
+      this._filterDocumentClickHandler = function (e) {
+        if (!that._filterDropdownOpen) {
+          return;
+        }
+
+        var insidePanel = that._filterDropdownPanel && that._filterDropdownPanel.contains(e.target);
+        var insideTrigger = that._activeFilterTrigger && that._activeFilterTrigger.contains(e.target);
+
+        if (!insidePanel && !insideTrigger) {
+          that._closeFilterDropdown();
+        }
+      };
+
+      document.addEventListener("click", this._filterDocumentClickHandler);
+    }
+
+    _openFilterDropdown(triggerEl, fieldName) {
+      this._createFilterDropdownPanel();
+
+      this._activeFilterTrigger = triggerEl;
+      this._activeFilterField = fieldName;
+      this._activeFilterOptions = this._getManageFilterOptions(fieldName) || [];
+      this._activeFilterSelectedKey = this._getManageFilterCurrentValue(fieldName) || "";
+
+      var triggerRect = triggerEl.getBoundingClientRect();
+      var dropdownWidth = Math.max(triggerRect.width, 260);
+      var dropdownHeight = 360;
+      var gap = 4;
+
+      var spaceBelow = window.innerHeight - triggerRect.bottom;
+      var spaceAbove = triggerRect.top;
+
+      var dropdownTop = triggerRect.bottom + gap;
+      var dropdownLeft = triggerRect.left;
+
+      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+        dropdownTop = triggerRect.top - dropdownHeight - gap;
+      }
+
+      if (dropdownTop < 10) {
+        dropdownTop = 10;
+      }
+
+      if (dropdownTop + dropdownHeight > window.innerHeight - 10) {
+        dropdownTop = window.innerHeight - dropdownHeight - 10;
+      }
+
+      if (dropdownLeft + dropdownWidth > window.innerWidth - 10) {
+        dropdownLeft = window.innerWidth - dropdownWidth - 10;
+      }
+
+      if (dropdownLeft < 10) {
+        dropdownLeft = 10;
+      }
+
+      this._filterDropdownPanel.style.display = "block";
+      this._filterDropdownPanel.style.position = "fixed";
+      this._filterDropdownPanel.style.left = dropdownLeft + "px";
+      this._filterDropdownPanel.style.top = dropdownTop + "px";
+      this._filterDropdownPanel.style.width = dropdownWidth + "px";
+      this._filterDropdownPanel.style.maxHeight = dropdownHeight + "px";
+      this._filterDropdownPanel.style.zIndex = "999999";
+
+      this._filterDropdownSearch.value = "";
+      this._filteredFilterOptions = this._activeFilterOptions.slice(0);
+      this._filterDropdownRenderedCount = 0;
+      this._filterDropdownList.innerHTML = "";
+      this._appendNextFilterDropdownBatch();
+      this._filterDropdownOpen = true;
+
+      var that = this;
+      setTimeout(function () {
+        if (that._filterDropdownSearch) {
+          that._filterDropdownSearch.focus();
+        }
+      }, 0);
+    }
+
+    _closeFilterDropdown() {
+      if (this._filterDropdownPanel) {
+        this._filterDropdownPanel.style.display = "none";
+      }
+
+      if (this._filterDropdownSearch) {
+        this._filterDropdownSearch.value = "";
+      }
+
+      if (this._filterDropdownList) {
+        this._filterDropdownList.innerHTML = "";
+      }
+
+      this._filterDropdownOpen = false;
+      this._activeFilterTrigger = null;
+      this._activeFilterField = "";
+      this._activeFilterOptions = [];
+      this._activeFilterSelectedKey = "";
+      this._filteredFilterOptions = [];
+      this._filterDropdownRenderedCount = 0;
+    }
+
+    _applyFilterDropdownSearch(searchText) {
+      var source = this._activeFilterOptions || [];
+      var searchValue = String(searchText || "").toLowerCase().trim();
+      var filtered = [];
+      var i = 0;
+
+      if (searchValue === "") {
+        this._filteredFilterOptions = source.slice(0);
+      } else {
+        for (i = 0; i < source.length; i++) {
+          if (source[i].searchText.indexOf(searchValue) > -1) {
+            filtered.push(source[i]);
+          }
+        }
+        this._filteredFilterOptions = filtered;
+      }
+
+      this._filterDropdownRenderedCount = 0;
+      this._filterDropdownList.innerHTML = "";
+      this._appendNextFilterDropdownBatch();
+    }
+
+    _appendNextFilterDropdownBatch() {
+      if (!this._filterDropdownList || !this._filteredFilterOptions) {
+        return;
+      }
+
+      var start = this._filterDropdownRenderedCount;
+      var end = start + this._filterDropdownBatchSize;
+
+      if (start >= this._filteredFilterOptions.length) {
+        return;
+      }
+
+      var fragment = document.createDocumentFragment();
+      var that = this;
+
+      for (var i = start; i < end && i < this._filteredFilterOptions.length; i++) {
+        var opt = this._filteredFilterOptions[i];
+        var item = document.createElement("div");
+        item.className = "dropdown-item";
+
+        if (String(opt.key) === String(this._activeFilterSelectedKey)) {
+          item.className += " selected";
+        }
+
+        item.textContent = opt.text;
+        item.setAttribute("data-key", opt.key);
+
+        item.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          var selectedKeyValue = this.getAttribute("data-key");
+          that._setManageInlineFilter(that._activeFilterField, selectedKeyValue);
+          that._closeFilterDropdown();
+          that._refreshTable();
+        });
+
+        fragment.appendChild(item);
+      }
+
+      this._filterDropdownList.appendChild(fragment);
+      this._filterDropdownRenderedCount = Math.min(end, this._filteredFilterOptions.length);
+
+      if (this._filterDropdownRenderedCount < this._filteredFilterOptions.length) {
+        if (!this._filterDropdownListMoreEl) {
+          this._filterDropdownListMoreEl = document.createElement("div");
+          this._filterDropdownListMoreEl.className = "dropdown-more";
+        }
+
+        this._filterDropdownListMoreEl.textContent =
+          "Showing " + String(this._filterDropdownRenderedCount) + " of " + String(this._filteredFilterOptions.length);
+
+        if (!this._filterDropdownListMoreEl.parentNode) {
+          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
+        } else {
+          this._filterDropdownList.appendChild(this._filterDropdownListMoreEl);
+        }
+      } else {
+        if (this._filterDropdownListMoreEl && this._filterDropdownListMoreEl.parentNode) {
+          this._filterDropdownListMoreEl.parentNode.removeChild(this._filterDropdownListMoreEl);
+        }
+      }
+
+      if (this._filteredFilterOptions.length === 0) {
+        this._filterDropdownList.innerHTML = '<div class="dropdown-empty">No results found</div>';
+      }
     }
 
     _openDropdown(triggerEl, tabName, rowIndex, fieldName) {
@@ -1770,18 +2123,20 @@
         var btnDelete = this._shadowRoot.getElementById("btnDelete");
         if (btnDelete) btnDelete.addEventListener("click", function () { that.deleteSelectedRows(); });
 
-        var btnValidate = this._shadowRoot.getElementById("btnValidate");
-        if (btnValidate) btnValidate.addEventListener("click", function () { that.validate(); });
+        var btnPasteExcel = this._shadowRoot.getElementById("btnPasteExcel");
+        if (btnPasteExcel) {
+          btnPasteExcel.addEventListener("click", function () {
+            var area = that._shadowRoot.getElementById("pasteCaptureArea");
+            if (area) {
+              area.value = "";
+              area.focus();
+            }
+          });
+        }
 
-        var btnSave = this._shadowRoot.getElementById("btnSave");
-        if (btnSave) btnSave.addEventListener("click", function () { that.save(); });
-
-        var btnClear = this._shadowRoot.getElementById("btnClear");
-        if (btnClear) btnClear.addEventListener("click", function () { that.clear(); });
-
-        var pasteZone = this._shadowRoot.getElementById("pasteZone");
-        if (pasteZone) {
-          pasteZone.addEventListener("paste", function (e) {
+        var pasteCaptureArea = this._shadowRoot.getElementById("pasteCaptureArea");
+        if (pasteCaptureArea) {
+          pasteCaptureArea.addEventListener("paste", function (e) {
             var text = "";
             if (e.clipboardData && e.clipboardData.getData) {
               text = e.clipboardData.getData("text/plain");
@@ -1798,15 +2153,27 @@
             return;
           }
 
+          var activeEl = that._shadowRoot.activeElement;
           var text = "";
+
           if (e.clipboardData && e.clipboardData.getData) {
             text = e.clipboardData.getData("text/plain");
           }
-          if (text !== "") {
+
+          if (text !== "" && activeEl && activeEl.id === "pasteCaptureArea") {
             e.preventDefault();
             that._pasteRowsFromClipboard(text);
           }
         });
+
+        var btnValidate = this._shadowRoot.getElementById("btnValidate");
+        if (btnValidate) btnValidate.addEventListener("click", function () { that.validate(); });
+
+        var btnSave = this._shadowRoot.getElementById("btnSave");
+        if (btnSave) btnSave.addEventListener("click", function () { that.save(); });
+
+        var btnClear = this._shadowRoot.getElementById("btnClear");
+        if (btnClear) btnClear.addEventListener("click", function () { that.clear(); });
 
         var selectAllCreate = this._shadowRoot.getElementById("selectAllCreate");
         if (selectAllCreate) {
@@ -1836,129 +2203,27 @@
           });
         }
 
-        var filterGlAccount = this._shadowRoot.getElementById("filterGlAccount");
-        if (filterGlAccount) {
-          filterGlAccount.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageGlAccountFilter = [];
-            } else {
-              that._manageGlAccountFilter = [v];
-            }
-            that._manageGlAccountFilterMap = that._buildFilterMap(that._manageGlAccountFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
+        var filterTriggerSegment = this._shadowRoot.getElementById("filterTriggerSegment");
+        if (filterTriggerSegment) {
+          filterTriggerSegment.addEventListener("click", function (e) {
+            e.stopPropagation();
+            that._openFilterDropdown(this, "SEGMENT");
           });
         }
 
-        var filterCostCenter = this._shadowRoot.getElementById("filterCostCenter");
-        if (filterCostCenter) {
-          filterCostCenter.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageCostCenterFilter = [];
-            } else {
-              that._manageCostCenterFilter = [v];
-            }
-            that._manageCostCenterFilterMap = that._buildFilterMap(that._manageCostCenterFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
+        var filterTriggerHierarchy = this._shadowRoot.getElementById("filterTriggerHierarchy");
+        if (filterTriggerHierarchy) {
+          filterTriggerHierarchy.addEventListener("click", function (e) {
+            e.stopPropagation();
+            that._openFilterDropdown(this, "Hierarchy");
           });
         }
 
-        var filterProfitCenter = this._shadowRoot.getElementById("filterProfitCenter");
-        if (filterProfitCenter) {
-          filterProfitCenter.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageProfitCenterFilter = [];
-            } else {
-              that._manageProfitCenterFilter = [v];
-            }
-            that._manageProfitCenterFilterMap = that._buildFilterMap(that._manageProfitCenterFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
-          });
-        }
-
-        var filterSegment = this._shadowRoot.getElementById("filterSegment");
-        if (filterSegment) {
-          filterSegment.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageSegmentFilter = [];
-            } else {
-              that._manageSegmentFilter = [v];
-            }
-            that._manageSegmentFilterMap = that._buildFilterMap(that._manageSegmentFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
-          });
-        }
-
-        var filterSnapshot = this._shadowRoot.getElementById("filterSnapshot");
-        if (filterSnapshot) {
-          filterSnapshot.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageSnapshotFilter = [];
-            } else {
-              that._manageSnapshotFilter = [v];
-            }
-            that._manageSnapshotFilterMap = that._buildFilterMap(that._manageSnapshotFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
-          });
-        }
-
-        var filterSubMapping = this._shadowRoot.getElementById("filterSubMapping");
-        if (filterSubMapping) {
-          filterSubMapping.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageSubMappingFilter = [];
-            } else {
-              that._manageSubMappingFilter = [v];
-            }
-            that._manageSubMappingFilterMap = that._buildFilterMap(that._manageSubMappingFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
-          });
-        }
-
-        var filterMapping = this._shadowRoot.getElementById("filterMapping");
-        if (filterMapping) {
-          filterMapping.addEventListener("change", function () {
-            var v = that._safeString(this.value);
-            if (v === "") {
-              that._manageMappingFilter = [];
-            } else {
-              that._manageMappingFilter = [v];
-            }
-            that._manageMappingFilterMap = that._buildFilterMap(that._manageMappingFilter);
-            that._manageCurrentPage = 1;
-            that._rebuildManageFilteredIndexes();
-            that._renderVisibleOnly();
-            that._refreshSummaryOnly();
-            that._syncAll();
+        var filterTriggerSnapshot = this._shadowRoot.getElementById("filterTriggerSnapshot");
+        if (filterTriggerSnapshot) {
+          filterTriggerSnapshot.addEventListener("click", function (e) {
+            e.stopPropagation();
+            that._openFilterDropdown(this, "SNAPSHOT");
           });
         }
 
@@ -2216,20 +2481,12 @@
         this._validationResult = "true";
         this._lastEvent = JSON.stringify({ type: "clearManage", tab: "manage" });
         this._manageIdSearch = "";
-        this._manageGlAccountFilter = [];
-        this._manageCostCenterFilter = [];
-        this._manageProfitCenterFilter = [];
+        this._manageHierarchyFilter = [];
+        this._manageHierarchyFilterMap = {};
         this._manageSegmentFilter = [];
-        this._manageSnapshotFilter = [];
-        this._manageSubMappingFilter = [];
-        this._manageMappingFilter = [];
-        this._manageGlAccountFilterMap = {};
-        this._manageCostCenterFilterMap = {};
-        this._manageProfitCenterFilterMap = {};
         this._manageSegmentFilterMap = {};
+        this._manageSnapshotFilter = [];
         this._manageSnapshotFilterMap = {};
-        this._manageSubMappingFilterMap = {};
-        this._manageMappingFilterMap = {};
         this._filteredManageIndexes = [];
         this._manageCurrentPage = 1;
         this._widgetStatus = "READY";
@@ -3088,8 +3345,8 @@
       '.project-widget-dropdown-panel {' +
         'background:#ffffff;' +
         'border:1px solid #cfd9e3;' +
-        'border-radius:8px;' +
-        'box-shadow:0 8px 24px rgba(34,53,72,0.18);' +
+        'border-radius:10px;' +
+        'box-shadow:0 12px 28px rgba(34,53,72,0.18);' +
         'overflow:hidden;' +
         'min-width:220px;' +
         'max-width:460px;' +
@@ -3198,12 +3455,11 @@
       '}';
     document.head.appendChild(globalStyleEl);
   })();
-})();*/
- 
+})();
 
 
 
-
+/*
 
 (function () {
   class ProjectEntryWidget extends HTMLElement {
@@ -6024,7 +6280,7 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
-
+*/
 
 
 
