@@ -1,6 +1,6 @@
 {
   "id": "com.company.managementwidget",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "name": "Project Entry Widget",
   "description": "Management mapping table widget for SAC",
   "vendor": "NTT",
@@ -41,7 +41,12 @@
     "manageProfitCenterFilter": { "type": "string", "default": "[]" },
     "manageSegmentFilter": { "type": "string", "default": "[]" },
     "manageSnapshotFilter": { "type": "string", "default": "[]" },
-    "manageIdSearch": { "type": "string", "default": "" }
+    "manageSubMappingFilter": { "type": "string", "default": "[]" },
+    "manageMappingFilter": { "type": "string", "default": "[]" },
+    "manageIdSearch": { "type": "string", "default": "" },
+
+    "enableExcelPaste": { "type": "boolean", "default": true },
+    "enableManageInlineFilters": { "type": "boolean", "default": true }
   },
   "methods": {
     "getRows": {
@@ -228,6 +233,18 @@
     },
     "setManageSnapshotFilter": {
       "description": "Filter manage rows by selected Snapshots",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageSubMappingFilter": {
+      "description": "Filter manage rows by selected Management Sub-Mapping values",
+      "parameters": [
+        { "name": "filterStr", "type": "string" }
+      ]
+    },
+    "setManageMappingFilter": {
+      "description": "Filter manage rows by selected Management Mapping values",
       "parameters": [
         { "name": "filterStr", "type": "string" }
       ]
