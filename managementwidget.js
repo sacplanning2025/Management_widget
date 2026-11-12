@@ -1,3 +1,4 @@
+/*
 (function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
@@ -3442,10 +3443,10 @@
     });
   }
 })();
+*/
 
 
 
-/*
 
 (function () {
   class ProjectEntryWidget extends HTMLElement {
@@ -6267,6 +6268,6 @@
   })();
 })();
 
-*/
+
 
 
