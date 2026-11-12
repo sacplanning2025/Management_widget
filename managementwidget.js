@@ -1,4 +1,4 @@
-/*(function () {
+(function () {
   class ProjectEntryWidget extends HTMLElement {
     constructor() {
       super();
@@ -3173,8 +3173,279 @@
     document.head.appendChild(globalStyleEl);
   })();
 })();
-*/
 
+(function () {
+  var TAG_NAME = "com-company-managementwidget";
+
+  function installManagementWidgetAddon() {
+    var WidgetClass = customElements.get(TAG_NAME);
+    if (!WidgetClass || WidgetClass.__managementAddonInstalled) {
+      return;
+    }
+
+    WidgetClass.__managementAddonInstalled = true;
+
+    var proto = WidgetClass.prototype;
+
+    var originalConnectedCallback = proto.connectedCallback;
+    var originalRefreshTable = proto._refreshTable;
+    var originalSetManageData = proto.setManageData;
+    var originalSetActiveTab = proto.setActiveTab;
+    var originalSetManageSegmentFilter = proto.setManageSegmentFilter;
+    var originalSetManageSnapshotFilter = proto.setManageSnapshotFilter;
+
+    proto._addonEnsureManageEnhancements = function () {
+      this._addonInjectFullHeightStyle();
+      this._addonInjectManageInlineFilters();
+    };
+
+    proto._addonInjectFullHeightStyle = function () {
+      if (!this._shadowRoot || this._shadowRoot.getElementById("management-addon-fullheight-style")) {
+        return;
+      }
+
+      var style = document.createElement("style");
+      style.id = "management-addon-fullheight-style";
+      style.textContent = `
+        :host {
+          display: block !important;
+          width: 100%;
+          height: 100%;
+          min-height: 100%;
+          box-sizing: border-box;
+        }
+
+        #widgetWrap,
+        .wrap {
+          height: 100%;
+          min-height: 100%;
+          display: flex;
+          flex-direction: column;
+          box-sizing: border-box;
+        }
+
+        .tabbar,
+        .toolbarWrap,
+        .pager,
+        .summary {
+          flex: 0 0 auto;
+        }
+
+        .gridWrap {
+          flex: 1 1 auto;
+          min-height: 0;
+          max-height: none !important;
+          height: auto !important;
+        }
+
+        .toolbarLeft {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .addon-manage-filter {
+          width: 180px;
+          max-width: 100%;
+          height: 36px;
+          border: 1px solid #c7d7ea;
+          background: #ffffff;
+          color: #223548;
+          border-radius: 8px;
+          padding: 0 12px;
+          font-size: 13px;
+          outline: none;
+          box-sizing: border-box;
+          cursor: pointer;
+        }
+
+        .addon-manage-filter:focus {
+          border-color: #0a6ed1;
+          box-shadow: 0 0 0 2px rgba(10,110,209,0.12);
+        }
+      `;
+      this._shadowRoot.appendChild(style);
+    };
+
+    proto._addonGetUniqueManageValues = function (fieldName) {
+      var rows = Array.isArray(this._manageRows) ? this._manageRows : [];
+      var map = {};
+      var values = [];
+
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i] || {};
+        var value = this._safeString(row[fieldName]);
+        if (value !== "" && map[value] !== true) {
+          map[value] = true;
+          values.push(value);
+        }
+      }
+
+      values.sort(function (a, b) {
+        return String(a).localeCompare(String(b), undefined, {
+          numeric: true,
+          sensitivity: "base"
+        });
+      });
+
+      return values;
+    };
+
+    proto._addonBuildSingleSelect = function (selectEl, placeholder, values, selectedValues) {
+      if (!selectEl) return;
+
+      var current = "";
+      if (Array.isArray(selectedValues) && selectedValues.length === 1) {
+        current = this._safeString(selectedValues[0]);
+      }
+
+      var html = '<option value="ALL">' + this._escape(placeholder) + '</option>';
+
+      for (var i = 0; i < values.length; i++) {
+        var val = this._safeString(values[i]);
+        var selected = current === val ? ' selected' : '';
+        html += '<option value="' + this._escape(val) + '"' + selected + '>' + this._escape(val) + '</option>';
+      }
+
+      selectEl.innerHTML = html;
+    };
+
+    proto._addonInjectManageInlineFilters = function () {
+      if (!this._shadowRoot || this._activeTab !== "manage") {
+        return;
+      }
+
+      var enableInlineFilters = true;
+      if (this.getAttribute("enableManageInlineFilters") === "false") {
+        enableInlineFilters = false;
+      }
+
+      if (!enableInlineFilters) {
+        return;
+      }
+
+      var toolbarLeft = this._shadowRoot.querySelector(".toolbarLeft");
+      if (!toolbarLeft) {
+        return;
+      }
+
+      var visibleCountText = this._shadowRoot.getElementById("visibleCountText");
+
+      var segmentFilter = this._shadowRoot.getElementById("addonManageSegmentFilter");
+      if (!segmentFilter) {
+        segmentFilter = document.createElement("select");
+        segmentFilter.id = "addonManageSegmentFilter";
+        segmentFilter.className = "addon-manage-filter";
+        if (visibleCountText) {
+          toolbarLeft.insertBefore(segmentFilter, visibleCountText);
+        } else {
+          toolbarLeft.appendChild(segmentFilter);
+        }
+
+        var thatSegment = this;
+        segmentFilter.addEventListener("change", function () {
+          var value = this.value;
+          if (value === "ALL" || value === "") {
+            thatSegment.setManageSegmentFilter("[]");
+          } else {
+            thatSegment.setManageSegmentFilter(JSON.stringify([value]));
+          }
+        });
+      }
+
+      var snapshotFilter = this._shadowRoot.getElementById("addonManageSnapshotFilter");
+      if (!snapshotFilter) {
+        snapshotFilter = document.createElement("select");
+        snapshotFilter.id = "addonManageSnapshotFilter";
+        snapshotFilter.className = "addon-manage-filter";
+        if (visibleCountText) {
+          toolbarLeft.insertBefore(snapshotFilter, visibleCountText);
+        } else {
+          toolbarLeft.appendChild(snapshotFilter);
+        }
+
+        var thatSnapshot = this;
+        snapshotFilter.addEventListener("change", function () {
+          var value = this.value;
+          if (value === "ALL" || value === "") {
+            thatSnapshot.setManageSnapshotFilter("[]");
+          } else {
+            thatSnapshot.setManageSnapshotFilter(JSON.stringify([value]));
+          }
+        });
+      }
+
+      this._addonBuildSingleSelect(
+        segmentFilter,
+        "All Segments",
+        this._addonGetUniqueManageValues("SEGMENT"),
+        this._manageSegmentFilter || []
+      );
+
+      this._addonBuildSingleSelect(
+        snapshotFilter,
+        "All Snapshots",
+        this._addonGetUniqueManageValues("SNAPSHOT"),
+        this._manageSnapshotFilter || []
+      );
+    };
+
+    proto.connectedCallback = function () {
+      if (originalConnectedCallback) {
+        originalConnectedCallback.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+
+    proto._refreshTable = function () {
+      if (originalRefreshTable) {
+        originalRefreshTable.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+
+    proto.setManageData = function (rowsJson) {
+      if (originalSetManageData) {
+        originalSetManageData.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+
+    proto.setActiveTab = function (tabName) {
+      if (originalSetActiveTab) {
+        originalSetActiveTab.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+
+    proto.setManageSegmentFilter = function (filterStr) {
+      if (originalSetManageSegmentFilter) {
+        originalSetManageSegmentFilter.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+
+    proto.setManageSnapshotFilter = function (filterStr) {
+      if (originalSetManageSnapshotFilter) {
+        originalSetManageSnapshotFilter.apply(this, arguments);
+      }
+      this._addonEnsureManageEnhancements();
+    };
+  }
+
+  if (customElements.get(TAG_NAME)) {
+    installManagementWidgetAddon();
+  } else {
+    customElements.whenDefined(TAG_NAME).then(function () {
+      installManagementWidgetAddon();
+    });
+  }
+})();
+
+
+
+/*
 
 (function () {
   class ProjectEntryWidget extends HTMLElement {
@@ -5996,6 +6267,6 @@
   })();
 })();
 
-
+*/
 
 
